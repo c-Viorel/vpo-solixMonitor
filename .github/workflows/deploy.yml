@@ -20,23 +20,27 @@ jobs:
           key: ${{ secrets.HOSTINGER_SSH_KEY }}
           script: |
             set -e
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-            cd "$DEPLOY_PATH"
+            DEPLOY="/home/u635403714/domains/vmedia.fun/public_html/solix"
+            cd "$DEPLOY"
 
             # Pull latest code
-            git pull origin main
+            GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy -o StrictHostKeyChecking=no" git pull origin main
 
             # Install/update dependencies
-            if [ -f ".venv/bin/activate" ]; then
-              source .venv/bin/activate
-            elif [ -f "../venv/bin/activate" ]; then
-              source ../venv/bin/activate
-            else
-              python3 -m venv .venv && source .venv/bin/activate
+            PYTHON=/opt/alt/python311/bin/python3.11
+            if [ ! -f ".venv/bin/pip" ]; then
+              $PYTHON -m venv .venv
             fi
-            pip install -r requirements.txt --quiet
+            source .venv/bin/activate
+            grep -v 'anker-solix-api' requirements.txt | pip install -r /dev/stdin --quiet
+            pip install --ignore-requires-python \
+              'anker-solix-api @ git+https://github.com/thomluther/anker-solix-api.git@main' \
+              --quiet 2>&1 || true
+
+            # Ensure runtime dirs exist
+            mkdir -p data tmp
 
             # Restart Passenger app
-            mkdir -p tmp && touch tmp/restart.txt
+            touch tmp/restart.txt
 
             echo "✅ Deployment complete"

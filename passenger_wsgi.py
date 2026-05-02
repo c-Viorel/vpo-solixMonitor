@@ -20,8 +20,20 @@ import sys
 import os
 from pathlib import Path
 
-# Ensure the app directory is on sys.path.
 APP_DIR = Path(__file__).resolve().parent
+
+# Activate the local .venv if present (Hostinger shared hosting without hPanel Python app)
+_venv_activate = APP_DIR / ".venv" / "bin" / "activate_this.py"
+if _venv_activate.exists():
+    exec(open(_venv_activate).read(), {"__file__": str(_venv_activate)})
+else:
+    # Ensure site-packages from local .venv are on sys.path
+    import glob
+    for _sp in glob.glob(str(APP_DIR / ".venv" / "lib" / "python*" / "site-packages")):
+        if _sp not in sys.path:
+            sys.path.insert(0, _sp)
+
+# Ensure the app directory is on sys.path.
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
