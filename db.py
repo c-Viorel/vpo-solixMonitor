@@ -195,6 +195,23 @@ def get_energy_daily(days: int = 30) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_lifetime_energy() -> dict:
+    """Sum of all energy_daily rows — all-time totals since first recording."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT
+               SUM(solar_kwh)     AS solar_kwh,
+               SUM(charge_kwh)    AS charge_kwh,
+               SUM(discharge_kwh) AS discharge_kwh,
+               SUM(usage_kwh)     AS usage_kwh,
+               MIN(date)          AS since_date,
+               COUNT(*)           AS days_recorded
+           FROM energy_daily"""
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------

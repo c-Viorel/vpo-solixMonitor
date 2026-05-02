@@ -17,12 +17,16 @@ const FONT        = { family: 'ui-sans-serif, system-ui, sans-serif', size: 11 }
 Chart.defaults.color = TICK_COLOR;
 Chart.defaults.font  = FONT;
 
-function timeScaleX() {
+function timeScaleX(hours) {
+  // Pick sensible axis granularity per range
+  const unit        = hours <= 24  ? 'hour' : hours <= 168 ? 'day' : 'day';
+  const ticksLimit  = hours <= 24  ? 12     : hours <= 168 ? 7    : 10;
+  const tooltipFmt  = hours <= 24  ? 'dd MMM HH:mm' : 'dd MMM yyyy';
   return {
     type: 'time',
-    time: { tooltipFormat: 'dd MMM HH:mm' },
+    time: { unit, tooltipFormat: tooltipFmt },
     grid: { color: GRID_COLOR },
-    ticks: { color: TICK_COLOR, maxTicksLimit: 8, source: 'auto' },
+    ticks: { color: TICK_COLOR, maxTicksLimit: ticksLimit, source: 'auto' },
   };
 }
 
@@ -40,39 +44,38 @@ function toDate(ts) {
   return new Date(ts.replace(/\+00:00$/, 'Z'));
 }
 
-function buildSocChart(rows) {
+function buildSocChart(rows, hours) {
   const ctx = document.getElementById('soc-chart');
   if (!ctx) return;
   const labels = rows.map(r => toDate(r.timestamp));
   const data   = rows.map(r => r.battery_soc);
 
-  const ds = [{
-    label: 'SOC %',
-    data,
-    borderColor: '#f97316',
-    backgroundColor: 'rgba(249,115,22,0.07)',
-    fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2,
-  }];
-
   if (socChart) {
     socChart.data.labels = labels;
     socChart.data.datasets[0].data = data;
+    socChart.options.scales.x = timeScaleX(hours);
     socChart.update();
     return;
   }
   socChart = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets: ds },
+    data: { labels, datasets: [{
+      label: 'SOC %',
+      data,
+      borderColor: '#f97316',
+      backgroundColor: 'rgba(249,115,22,0.07)',
+      fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2,
+    }] },
     options: {
       responsive: true, animation: false,
       plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-      scales: { x: timeScaleX(), y: linearScaleY('%', 0, 100) },
+      scales: { x: timeScaleX(hours), y: linearScaleY('%', 0, 100) },
     }
   });
 }
 
 // ── Power chart ───────────────────────────────────────────────────────────────
-function buildPowerChart(rows) {
+function buildPowerChart(rows, hours) {
   const ctx = document.getElementById('power-chart');
   if (!ctx) return;
   const labels = rows.map(r => toDate(r.timestamp));
@@ -87,6 +90,7 @@ function buildPowerChart(rows) {
   if (powerChart) {
     powerChart.data.labels = labels;
     datasets.forEach((ds, i) => { powerChart.data.datasets[i].data = ds.data; });
+    powerChart.options.scales.x = timeScaleX(hours);
     powerChart.update();
     return;
   }
@@ -96,13 +100,10 @@ function buildPowerChart(rows) {
     options: {
       responsive: true, animation: false,
       plugins: {
-        legend: {
-          position: 'top',
-          labels: { color: TICK_COLOR, boxWidth: 12, padding: 16 },
-        },
+        legend: { position: 'top', labels: { color: TICK_COLOR, boxWidth: 12, padding: 16 } },
         tooltip: { mode: 'index', intersect: false },
       },
-      scales: { x: timeScaleX(), y: linearScaleY('W', 0, undefined) },
+      scales: { x: timeScaleX(hours), y: linearScaleY('W', 0, undefined) },
     }
   });
 }
@@ -111,12 +112,17 @@ function buildPowerChart(rows) {
 function buildEnergyChart(rows) {
   const ctx = document.getElementById('energy-chart');
   if (!ctx) return;
-  const labels = rows.map(r => r.date);
+
+  // Format dates nicely for bar chart labels
+  const labels = rows.map(r => {
+    const d = new Date(r.date + 'T12:00:00');
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  });
 
   const datasets = [
-    { label: 'Solar (kWh)',      data: rows.map(r => r.solar_kwh),     backgroundColor: 'rgba(250,204,21,0.7)' },
-    { label: 'Charged (kWh)',    data: rows.map(r => r.charge_kwh),    backgroundColor: 'rgba(74,222,128,0.7)' },
-    { label: 'Discharged (kWh)', data: rows.map(r => r.discharge_kwh), backgroundColor: 'rgba(96,165,250,0.7)' },
+    { label: 'Solar (kWh)',      data: rows.map(r => r.solar_kwh),     backgroundColor: 'rgba(250,204,21,0.75)' },
+    { label: 'Charged (kWh)',    data: rows.map(r => r.charge_kwh),    backgroundColor: 'rgba(74,222,128,0.75)' },
+    { label: 'Discharged (kWh)', data: rows.map(r => r.discharge_kwh), backgroundColor: 'rgba(96,165,250,0.75)' },
   ];
 
   if (energyChart) {
@@ -131,17 +137,11 @@ function buildEnergyChart(rows) {
     options: {
       responsive: true, animation: false,
       plugins: {
-        legend: {
-          position: 'top',
-          labels: { color: TICK_COLOR, boxWidth: 12, padding: 16 },
-        },
+        legend: { position: 'top', labels: { color: TICK_COLOR, boxWidth: 12, padding: 16 } },
         tooltip: { mode: 'index', intersect: false },
       },
       scales: {
-        x: {
-          grid: { color: GRID_COLOR },
-          ticks: { color: TICK_COLOR },
-        },
+        x: { grid: { color: GRID_COLOR }, ticks: { color: TICK_COLOR } },
         y: linearScaleY(' kWh', 0, undefined),
       }
     }
@@ -158,16 +158,42 @@ function buildEnergyTable(rows) {
     return;
   }
 
+  // Compute period totals
+  const sum = key => rows.reduce((acc, r) => acc + (r[key] || 0), 0);
+  const totals = {
+    solar_kwh:     sum('solar_kwh'),
+    charge_kwh:    sum('charge_kwh'),
+    discharge_kwh: sum('discharge_kwh'),
+    usage_kwh:     sum('usage_kwh'),
+  };
+
+  const fmtDate = dateStr => {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
   const sorted = [...rows].reverse();
-  tbody.innerHTML = sorted.map(r => `
-    <tr class="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
-      <td class="py-2.5 pr-4 font-medium">${r.date}</td>
-      <td class="py-2.5 pr-4 text-yellow-400">${fmt(r.solar_kwh)}</td>
-      <td class="py-2.5 pr-4 text-green-400">${fmt(r.charge_kwh)}</td>
-      <td class="py-2.5 pr-4 text-blue-400">${fmt(r.discharge_kwh)}</td>
-      <td class="py-2.5 text-slate-300">${fmt(r.usage_kwh)}</td>
+  const dataRows = sorted.map((r, i) => `
+    <tr class="${i % 2 === 0 ? 'bg-slate-800/20' : ''} hover:bg-slate-700/30 transition-colors">
+      <td class="py-2.5 pr-4 font-medium text-slate-200">${fmtDate(r.date)}</td>
+      <td class="py-2.5 pr-4 text-yellow-400 tabular-nums">${fmt(r.solar_kwh)}</td>
+      <td class="py-2.5 pr-4 text-green-400 tabular-nums">${fmt(r.charge_kwh)}</td>
+      <td class="py-2.5 pr-4 text-blue-400 tabular-nums">${fmt(r.discharge_kwh)}</td>
+      <td class="py-2.5 text-slate-300 tabular-nums">${fmt(r.usage_kwh)}</td>
     </tr>
   `).join('');
+
+  const totalsRow = `
+    <tr class="border-t-2 border-slate-600 bg-slate-800/50 font-semibold">
+      <td class="py-2.5 pr-4 text-slate-300">Period Total</td>
+      <td class="py-2.5 pr-4 text-yellow-300 tabular-nums">${fmt(totals.solar_kwh)}</td>
+      <td class="py-2.5 pr-4 text-green-300 tabular-nums">${fmt(totals.charge_kwh)}</td>
+      <td class="py-2.5 pr-4 text-blue-300 tabular-nums">${fmt(totals.discharge_kwh)}</td>
+      <td class="py-2.5 text-slate-200 tabular-nums">${fmt(totals.usage_kwh)}</td>
+    </tr>
+  `;
+
+  tbody.innerHTML = dataRows + totalsRow;
 }
 
 function fmt(v) {
@@ -191,12 +217,13 @@ async function loadEnergy(days) {
 
 async function refresh(hours) {
   try {
+    const days = Math.ceil(hours / 24) + 1;
     const [readings, energy] = await Promise.all([
       loadReadings(hours),
-      loadEnergy(Math.ceil(hours / 24) + 1),
+      loadEnergy(days),
     ]);
-    buildSocChart(readings);
-    buildPowerChart(readings);
+    buildSocChart(readings, hours);
+    buildPowerChart(readings, hours);
     buildEnergyChart(energy);
     buildEnergyTable(energy);
   } catch (e) {
@@ -215,6 +242,5 @@ function setRange(hours, btn) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 function initHistory() {
   refresh(currentHours);
-  // Auto-refresh every 5 minutes.
   setInterval(() => refresh(currentHours), 300_000);
 }

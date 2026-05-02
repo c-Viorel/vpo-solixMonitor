@@ -375,6 +375,11 @@ def create_app():
         from db import get_energy_daily
         return jsonify(get_energy_daily(days=days))
 
+    @app.route("/api/energy/lifetime")
+    def api_energy_lifetime():
+        from db import get_lifetime_energy
+        return jsonify(get_lifetime_energy())
+
     @app.route("/api/debug-device")
     @login_required
     def api_debug_device():

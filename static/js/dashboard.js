@@ -212,6 +212,26 @@ async function refreshSparkline() {
   }
 }
 
+async function refreshLifetime() {
+  try {
+    const res = await fetch('/api/energy/lifetime');
+    if (!res.ok) return;
+    const d = await res.json();
+    const setEl = (id, val, dec = 2) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val != null ? Number(val).toFixed(dec) : '—';
+    };
+    setEl('lifetime-discharge', d.discharge_kwh);
+    setEl('lifetime-charge',    d.charge_kwh);
+    setEl('lifetime-solar',     d.solar_kwh);
+    setEl('lifetime-days',      d.days_recorded, 0);
+    const sinceEl = document.getElementById('lifetime-since');
+    if (sinceEl && d.since_date) sinceEl.textContent = `since ${d.since_date}`;
+  } catch (e) {
+    console.warn('Lifetime stats fetch failed:', e);
+  }
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 function initDashboard(sparklineData, initialReading) {
   // Apply server-rendered data immediately (no flash of empty state).
@@ -227,10 +247,10 @@ function initDashboard(sparklineData, initialReading) {
   // Start age ticker (updates "X seconds ago" every second).
   startAgeTicker();
 
-  // Poll live values every 5 s; refresh sparkline every 60 s.
+  // Poll live values every 5 s; refresh sparkline every 60 s; lifetime once on load.
   setInterval(pollCurrent, POLL_MS);
   setInterval(refreshSparkline, 60_000);
-  // Fire both immediately after a short delay.
   setTimeout(pollCurrent, 500);
   setTimeout(refreshSparkline, 1000);
+  refreshLifetime();
 }
