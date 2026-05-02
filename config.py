@@ -6,8 +6,9 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
+# DATA_DIR can be overridden via env var (e.g. a Railway/Fly.io persistent volume)
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "data")))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class Config:

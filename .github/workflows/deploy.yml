@@ -1,4 +1,4 @@
-name: Deploy to Hostinger
+name: Deploy to Railway
 
 on:
   push:
@@ -7,40 +7,17 @@ on:
 
 jobs:
   deploy:
-    name: SSH Deploy
+    name: Railway Deploy
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HOSTINGER_HOST }}
-          port: ${{ secrets.HOSTINGER_PORT }}
-          username: ${{ secrets.HOSTINGER_USER }}
-          key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          script: |
-            set -e
-            DEPLOY="/home/u635403714/domains/vmedia.fun/public_html/solix"
-            cd "$DEPLOY"
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            # Pull latest code
-            GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy -o StrictHostKeyChecking=no" git pull origin main
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
-            # Install/update dependencies
-            PYTHON=/opt/alt/python311/bin/python3.11
-            if [ ! -f ".venv/bin/pip" ]; then
-              $PYTHON -m venv .venv
-            fi
-            source .venv/bin/activate
-            grep -v 'anker-solix-api' requirements.txt | pip install -r /dev/stdin --quiet
-            pip install --ignore-requires-python \
-              'anker-solix-api @ git+https://github.com/thomluther/anker-solix-api.git@main' \
-              --quiet 2>&1 || true
+      - name: Deploy
+        run: railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-            # Ensure runtime dirs exist
-            mkdir -p data tmp
-
-            # Restart Passenger app
-            touch tmp/restart.txt
-
-            echo "✅ Deployment complete"
