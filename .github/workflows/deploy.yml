@@ -17,7 +17,7 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy
-        run: railway up --detach
+        run: railway up --detach --service solix-monitor
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
