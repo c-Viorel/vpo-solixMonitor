@@ -1,0 +1,32 @@
+# Environment / secrets
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Encryption key – never commit this
+data/.enc_key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Flask sessions
+data/flask_sessions/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

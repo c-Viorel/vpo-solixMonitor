@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}Settings – Solix Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-7 flex items-center gap-3">
+  <div style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.2);border-radius:10px;" class="w-10 h-10 flex items-center justify-center flex-shrink-0">
+    <svg class="w-5 h-5" style="color:#f97316" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+    </svg>
+  </div>
+  <div>
+    <h1 style="color:#f1f5f9; font-size:1.4rem; font-weight:700;">Settings</h1>
+    <p style="color:#64748b; font-size:0.82rem;">Manage your Anker account credentials and app configuration.</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+
+  <!-- ── Anker credentials ── -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <h2 style="color:#f1f5f9; font-size:0.95rem; font-weight:600;">Anker Account</h2>
+      {% if display_email %}
+        <span id="cred-status-badge" class="badge badge-green">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          Saved
+        </span>
+      {% else %}
+        <span id="cred-status-badge" class="badge badge-amber">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          Not configured
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- How-to expandable -->
+    <details class="mb-5" style="border:1px solid #1e3050;border-radius:0.5rem;overflow:hidden;">
+      <summary style="cursor:pointer;padding:0.75rem 1rem;background:#0a1526;color:#64748b;font-size:0.8rem;font-weight:500;list-style:none;display:flex;align-items:center;gap:0.5rem;">
+        <svg class="w-4 h-4" style="color:#f97316" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        How to get your credentials
+        <svg class="w-3 h-3 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </summary>
+      <div style="padding:1rem;background:#080e1c;font-size:0.8rem;color:#94a3b8;line-height:1.6;" class="space-y-3">
+        <div>
+          <p style="color:#e2e8f0;font-weight:600;margin-bottom:0.25rem;">Option A – Direct account (recommended, App ≥ v3.10)</p>
+          <ol style="padding-left:1.25rem;list-style:decimal;space-y:0.25rem;">
+            <li>Open the <strong style="color:#f1f5f9;">Anker app</strong> and add your C1000X.</li>
+            <li>Use that same <strong style="color:#f1f5f9;">email + password</strong> in the form below.</li>
+            <li>The <strong style="color:#f1f5f9;">country code</strong> is the 2-letter ISO country your account is registered in (<code style="background:#1e3050;padding:0.1rem 0.35rem;border-radius:3px;">us</code>, <code style="background:#1e3050;padding:0.1rem 0.35rem;border-radius:3px;">de</code>, <code style="background:#1e3050;padding:0.1rem 0.35rem;border-radius:3px;">gb</code>, <code style="background:#1e3050;padding:0.1rem 0.35rem;border-radius:3px;">fr</code>…)</li>
+          </ol>
+        </div>
+        <div>
+          <p style="color:#e2e8f0;font-weight:600;margin-bottom:0.25rem;">Option B – Shared account (older App versions)</p>
+          <ol style="padding-left:1.25rem;list-style:decimal;">
+            <li>Create a second Anker account with a different email.</li>
+            <li>In the Anker app → My System → Share → invite the second account.</li>
+            <li>Enter the <strong style="color:#f1f5f9;">second account's</strong> credentials here.</li>
+          </ol>
+        </div>
+        <p style="color:#f59e0b;font-size:0.75rem;">🔒 Credentials are AES-256 encrypted before being stored.</p>
+      </div>
+    </details>
+
+    <form id="cred-form" method="POST" action="{{ url_for('admin_save_credentials') }}" autocomplete="off">
+      <div class="space-y-4">
+        <div>
+          <label class="form-label">Email</label>
+          <input type="email" name="email" id="f-email" required
+                 placeholder="{{ display_email or 'you@example.com' }}"
+                 class="form-input" autocomplete="new-password" />
+          {% if display_email %}
+            <p style="color:#475569;font-size:0.75rem;margin-top:0.3rem;">Currently saved: <span style="color:#94a3b8;">{{ display_email }}</span></p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="form-label">Password</label>
+          <div style="position:relative;">
+            <input type="password" name="password" id="f-password" required
+                   placeholder="••••••••" class="form-input" autocomplete="new-password"
+                   style="padding-right:2.5rem;" />
+            <button type="button" onclick="togglePw()" tabindex="-1"
+                    style="position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);color:#475569;background:none;border:none;cursor:pointer;padding:0;">
+              <svg id="pw-eye" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Country Code</label>
+          <input type="text" name="country" id="f-country" maxlength="2" required
+                 value="{{ country }}" placeholder="us" class="form-input"
+                 style="text-transform:uppercase;max-width:6rem;" />
+          <p style="color:#475569;font-size:0.75rem;margin-top:0.3rem;">2-letter ISO code for your Anker account's country.</p>
+        </div>
+
+        <!-- Test result box (hidden until test runs) -->
+        <div id="test-result" style="display:none;border-radius:0.5rem;padding:0.75rem 1rem;font-size:0.82rem;line-height:1.5;"></div>
+
+        <!-- Action buttons -->
+        <div class="flex gap-3 pt-1">
+          <button type="button" id="test-btn" onclick="testCredentials()"
+                  class="btn-secondary" style="flex:1;">
+            <svg id="test-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="test-label">Test Connection</span>
+          </button>
+          <button type="submit" class="btn-primary" style="flex:1;">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+            Save & Encrypt
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Collection status ── -->
+  <div class="card">
+    <h2 style="color:#f1f5f9;font-size:0.95rem;font-weight:600;" class="mb-4">Collection Status</h2>
+
+    <dl style="font-size:0.875rem;" class="space-y-3 mb-5">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #0f1e33;">
+        <dt style="color:#64748b;">Last collection</dt>
+        <dd style="color:#e2e8f0;font-weight:500;font-size:0.8rem;">
+          {% if last_reading %}
+            <span id="last-ts">{{ last_reading.timestamp }}</span>
+          {% else %}
+            <span style="color:#334155;">Never</span>
+          {% endif %}
+        </dd>
+      </div>
+      {% if last_reading %}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #0f1e33;">
+        <dt style="color:#64748b;">Battery SOC</dt>
+        <dd style="color:#f1f5f9;font-weight:600;">
+          {{ "%.1f"|format(last_reading.battery_soc) if last_reading.battery_soc is not none else '—' }}%
+        </dd>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #0f1e33;">
+        <dt style="color:#64748b;">Device</dt>
+        <dd>
+          {% if last_reading.device_online %}
+            <span class="badge badge-green"><span class="pulse-dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;"></span>Online</span>
+          {% else %}
+            <span class="badge badge-red">Offline</span>
+          {% endif %}
+        </dd>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;">
+        <dt style="color:#64748b;">Data source</dt>
+        <dd><span class="badge badge-gray">{{ last_reading.data_source or '—' }}</span></dd>
+      </div>
+      {% endif %}
+    </dl>
+
+    <form method="POST" action="{{ url_for('admin_trigger_collect') }}">
+      <button type="submit" class="btn-secondary w-full">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Collect Data Now
+      </button>
+    </form>
+
+    {% if not display_email %}
+    <p style="color:#475569;font-size:0.75rem;margin-top:0.75rem;text-align:center;">
+      Configure your Anker credentials first to start collecting data.
+    </p>
+    {% endif %}
+  </div>
+
+  <!-- ── Change admin password ── -->
+  <div class="card">
+    <h2 style="color:#f1f5f9;font-size:0.95rem;font-weight:600;" class="mb-4">Change Admin Password</h2>
+    <form method="POST" action="{{ url_for('admin_save_password') }}" autocomplete="off">
+      <div class="space-y-4">
+        <div>
+          <label class="form-label">Current Password</label>
+          <input type="password" name="current_password" required placeholder="••••••••" class="form-input" />
+        </div>
+        <div>
+          <label class="form-label">New Password <span style="color:#475569;font-weight:400;">(min 8 chars)</span></label>
+          <input type="password" name="new_password" required minlength="8" placeholder="••••••••" class="form-input" />
+        </div>
+        <div>
+          <label class="form-label">Confirm New Password</label>
+          <input type="password" name="confirm_password" required placeholder="••••••••" class="form-input" />
+        </div>
+        <button type="submit" class="btn-primary w-full">Update Password</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Danger zone ── -->
+  <div class="card" style="border-color:rgba(239,68,68,0.2);">
+    <h2 style="color:#f87171;font-size:0.95rem;font-weight:600;" class="mb-1">Danger Zone</h2>
+    <p style="color:#64748b;font-size:0.8rem;" class="mb-4">Permanently delete all collected readings and energy data. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('admin_clear_data') }}"
+          onsubmit="return confirm('Delete ALL historical data? This cannot be undone.')">
+      <div class="flex gap-3">
+        <input type="text" name="confirm" placeholder="Type DELETE to confirm"
+               class="form-input flex-1" style="border-color:rgba(239,68,68,0.3);" />
+        <button type="submit"
+                style="padding:0.65rem 1rem;border-radius:0.5rem;background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.3);font-size:0.875rem;font-weight:500;cursor:pointer;white-space:nowrap;transition:background 0.15s;"
+                onmouseover="this.style.background='rgba(239,68,68,0.2)'"
+                onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+          Clear All Data
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+@keyframes savePulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.7); }
+  50%      { box-shadow: 0 0 0 8px rgba(249,115,22,0); }
+}
+</style>
+<script>
+// ── Password visibility toggle ──────────────────────────────────────────
+function togglePw() {
+  const inp = document.getElementById('f-password');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ── Format ISO timestamp to local readable ──────────────────────────────
+(function formatTimestamps() {
+  const el = document.getElementById('last-ts');
+  if (!el) return;
+  try {
+    const ts = el.textContent.trim();
+    const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z');
+    el.textContent = d.toLocaleString(undefined, {
+      day:'2-digit', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit'
+    });
+  } catch(e) {}
+})();
+
+// ── Live credential test ────────────────────────────────────────────────
+async function testCredentials() {
+  const email    = document.getElementById('f-email').value.trim();
+  const password = document.getElementById('f-password').value.trim();
+  const country  = document.getElementById('f-country').value.trim().toLowerCase();
+  const box      = document.getElementById('test-result');
+  const btn      = document.getElementById('test-btn');
+  const label    = document.getElementById('test-label');
+  const icon     = document.getElementById('test-icon');
+
+  if (!email || !password) {
+    showResult(false, 'Please fill in email and password first.');
+    return;
+  }
+
+  // Loading state
+  btn.disabled = true;
+  icon.outerHTML = '<span id="test-icon" class="spinner spinner-orange"></span>';
+  label.textContent = 'Testing…';
+
+  try {
+    const res  = await fetch('/api/test-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, country })
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      let html = `<strong style="color:#4ade80;">&#10003; Connected successfully</strong><br>`;
+      html += `<span style="color:#94a3b8;">Account: ${data.nickname || '—'} · `;
+      html += `${data.devices} device(s) · ${data.sites} system(s)</span>`;
+      if (data.device_list && data.device_list.length > 0) {
+        html += '<ul style="margin-top:0.5rem;list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:0.4rem;">';
+        data.device_list.forEach(d => {
+          html += `<li style="background:#0a1526;border:1px solid #1e3050;border-radius:5px;padding:0.2rem 0.5rem;font-size:0.75rem;color:#94a3b8;">
+            <span style="color:#e2e8f0;">${d.name}</span>${d.pn ? ` <span style="color:#334155;">${d.pn}</span>` : ''}</li>`;
+        });
+        html += '</ul>';
+      }
+      html += `<p style="margin-top:0.6rem;color:#86efac;font-weight:600;">
+        &#8595; Click <strong>Save &amp; Encrypt</strong> below to start collecting data.</p>`;
+
+      // Update the status badge at the top
+      const badge = document.getElementById('cred-status-badge');
+      if (badge) {
+        badge.className = 'badge badge-green';
+        badge.innerHTML = `<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Verified`;
+      }
+
+      // Pulse the Save button so user knows to click it
+      const saveBtn = document.querySelector('#cred-form button[type="submit"]');
+      if (saveBtn) {
+        saveBtn.style.animation = 'savePulse 1s ease-in-out 3';
+        saveBtn.textContent = 'Save & Encrypt  \u2190 click here';
+      }
+
+      showResult(true, html);
+    } else {
+      showResult(false, data.message || 'Connection failed.');
+    }
+  } catch(e) {
+    showResult(false, 'Request failed. Is the server running?');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('test-icon').outerHTML =
+      '<svg id="test-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+    label.textContent = 'Test Connection';
+  }
+}
+
+function showResult(ok, html) {
+  const box = document.getElementById('test-result');
+  box.style.display = 'block';
+  box.style.background = ok ? 'rgba(34,197,94,0.07)'  : 'rgba(239,68,68,0.07)';
+  box.style.border     = ok ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(239,68,68,0.25)';
+  box.style.color      = ok ? '#86efac' : '#fca5a5';
+  box.innerHTML        = html;
+}
+</script>
+{% endblock %}

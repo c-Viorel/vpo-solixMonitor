@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Solix Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Live Dashboard</h1>
+    <p class="text-slate-400 text-sm mt-0.5">Anker Solix C1000X · <span id="last-updated">Updating…</span></p>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="live-badge" class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-900/40 text-green-400 border border-green-800/50">
+      <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> LIVE
+    </span>
+  </div>
+</div>
+
+{% if not configured %}
+<div class="mb-6 p-4 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 text-sm flex items-start gap-3">
+  <svg class="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+  <span>Anker credentials not configured yet. <a href="{{ url_for('admin') }}" class="underline font-medium hover:text-amber-200">Go to Admin</a> to set them up.</span>
+</div>
+{% endif %}
+
+<!-- ── Primary metrics row ── -->
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+
+  <!-- Battery gauge -->
+  <div class="sm:col-span-2 xl:col-span-1 card flex flex-col items-center py-6">
+    <p class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">Battery State</p>
+    <div class="relative">
+      <svg viewBox="0 0 120 80" class="w-40 h-auto">
+        <!-- Track arc -->
+        <path d="M10,70 A55,55 0 0,1 110,70" fill="none" stroke="#1e293b" stroke-width="12" stroke-linecap="round"/>
+        <!-- Fill arc (driven by JS) -->
+        <path id="soc-arc" d="M10,70 A55,55 0 0,1 110,70" fill="none" stroke="#f97316" stroke-width="12"
+              stroke-linecap="round" stroke-dasharray="172.8" stroke-dashoffset="172.8"
+              style="transition:stroke-dashoffset 1s ease"/>
+      </svg>
+      <div class="absolute inset-0 flex flex-col items-center justify-end pb-1">
+        <span id="soc-value" class="text-3xl font-bold text-white">—</span>
+        <span class="text-slate-400 text-xs">%</span>
+      </div>
+    </div>
+    <p id="charging-badge" class="mt-3 px-3 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300">—</p>
+  </div>
+
+  <!-- Solar input -->
+  <div class="card flex flex-col">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-slate-400 text-xs font-medium uppercase tracking-wider">Solar Input</p>
+      <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/></svg>
+    </div>
+    <p class="text-3xl font-bold text-white mt-auto"><span id="solar-power">—</span><span class="text-lg font-normal text-slate-400 ml-1">W</span></p>
+    <p class="text-slate-500 text-xs mt-1">Today: <span id="solar-today">—</span> kWh</p>
+  </div>
+
+  <!-- AC Output -->
+  <div class="card flex flex-col">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-slate-400 text-xs font-medium uppercase tracking-wider">AC Output</p>
+      <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    </div>
+    <p class="text-3xl font-bold text-white mt-auto"><span id="ac-out-power">—</span><span class="text-lg font-normal text-slate-400 ml-1">W</span></p>
+    <p class="text-slate-500 text-xs mt-1">DC/USB: <span id="dc-out-power">—</span> W</p>
+  </div>
+
+  <!-- AC Input / Charging -->
+  <div class="card flex flex-col">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-slate-400 text-xs font-medium uppercase tracking-wider">AC Charging</p>
+      <svg class="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+    </div>
+    <p class="text-3xl font-bold text-white mt-auto"><span id="ac-in-power">—</span><span class="text-lg font-normal text-slate-400 ml-1">W</span></p>
+    <p class="text-slate-500 text-xs mt-1">Total in: <span id="total-in">—</span> W</p>
+  </div>
+</div>
+
+<!-- ── Secondary stats ── -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  <div class="card">
+    <p class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Battery Temp</p>
+    <p class="text-xl font-semibold text-white"><span id="battery-temp">—</span> °C</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Remaining Wh</p>
+    <p class="text-xl font-semibold text-white"><span id="battery-wh">—</span> Wh</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Today Discharge</p>
+    <p class="text-xl font-semibold text-white"><span id="discharge-today">—</span> kWh</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Device Status</p>
+    <p id="device-status" class="text-xl font-semibold text-white">—</p>
+  </div>
+</div>
+
+<!-- ── Sparkline ── -->
+<div class="card mb-6">
+  <div class="flex items-center justify-between mb-4">
+    <p class="text-sm font-medium text-slate-300">Battery SOC – last 2 hours</p>
+    <a href="{{ url_for('history') }}" class="text-xs text-brand hover:underline">Full history →</a>
+  </div>
+  <canvas id="sparkline-chart" height="80"></canvas>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ static_ver }}"></script>
+<script>
+  // Seed sparkline with server-side data (avoids blank chart on first load).
+  const initialSparkline = {{ sparkline | tojson }};
+  const initialReading = {{ (reading or {}) | tojson }};
+  initDashboard(initialSparkline, initialReading);
+</script>
+{% endblock %}

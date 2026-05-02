@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}History – Solix Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-white">History</h1>
+    <p class="text-slate-400 text-sm mt-0.5">Historical power &amp; energy data</p>
+  </div>
+
+  <!-- Time range picker -->
+  <div class="flex rounded-lg overflow-hidden border border-surface-border" role="group">
+    {% for label, value in [('24 h','24'), ('7 d','168'), ('30 d','720')] %}
+    <button data-hours="{{ value }}" onclick="setRange({{ value }}, this)"
+            class="range-btn px-4 py-2 text-sm font-medium border-r last:border-0 border-surface-border
+                   text-slate-400 hover:text-white hover:bg-surface transition-colors
+                   {% if loop.first %}active-range{% endif %}">
+      {{ label }}
+    </button>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Battery SOC chart -->
+<div class="card mb-6">
+  <p class="text-sm font-medium text-slate-300 mb-4">Battery State of Charge (%)</p>
+  <canvas id="soc-chart" height="120"></canvas>
+</div>
+
+<!-- Power flow chart -->
+<div class="card mb-6">
+  <p class="text-sm font-medium text-slate-300 mb-1">Power Flow (W)</p>
+  <p class="text-xs text-slate-500 mb-4">Solar input · AC charging · AC output · DC/USB output</p>
+  <canvas id="power-chart" height="140"></canvas>
+</div>
+
+<!-- Daily energy chart -->
+<div class="card mb-6">
+  <p class="text-sm font-medium text-slate-300 mb-1">Daily Energy (kWh)</p>
+  <p class="text-xs text-slate-500 mb-4">Solar produced · Charged · Discharged</p>
+  <canvas id="energy-chart" height="120"></canvas>
+</div>
+
+<!-- Daily energy table -->
+<div class="card">
+  <p class="text-sm font-medium text-slate-300 mb-4">Daily Totals</p>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm text-left">
+      <thead class="text-xs text-slate-500 uppercase border-b border-surface-border">
+        <tr>
+          <th class="pb-3 pr-4">Date</th>
+          <th class="pb-3 pr-4">Solar (kWh)</th>
+          <th class="pb-3 pr-4">Charged (kWh)</th>
+          <th class="pb-3 pr-4">Discharged (kWh)</th>
+          <th class="pb-3">Usage (kWh)</th>
+        </tr>
+      </thead>
+      <tbody id="energy-table" class="text-slate-300">
+        <tr><td colspan="5" class="py-4 text-center text-slate-500">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/history.js') }}?v={{ static_ver }}"></script>
+<script>initHistory();</script>
+{% endblock %}
