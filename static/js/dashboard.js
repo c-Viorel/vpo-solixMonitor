@@ -77,7 +77,9 @@ function applyReading(r) {
     devEl.className = 'text-xl font-semibold ' + (r.device_online ? 'text-green-400' : 'text-red-400');
   }
 
-  // Last updated — store timestamp for the ticker
+  // Energy today
+  setText('solar-today',    r.solar_today_kwh,     2);
+  setText('discharge-today', r.discharge_today_kwh, 2);
   const tsEl = document.getElementById('last-updated');
   if (tsEl && r.timestamp) {
     const ts = r.timestamp.replace(/\+00:00$/, 'Z').replace(/(\.\d+)?([+-]\d{2}:\d{2})$/, (m, ms, tz) => (ms||'') + (tz === '+00:00' ? 'Z' : tz));
@@ -113,53 +115,60 @@ function startAgeTicker() {
   }, 1000);
 }
 
-// ── Sparkline chart ──────────────────────────────────────────────────────────
+// ── Power Flow chart (24 h) ──────────────────────────────────────────────────
 let sparkChart = null;
 
 function buildSparkline(dataPoints) {
   const ctx = document.getElementById('sparkline-chart');
   if (!ctx) return;
 
-  const labels = dataPoints.map(d => new Date(d.t.replace(/\+00:00$/, 'Z')));
-  const values = dataPoints.map(d => d.v);
+  const labels   = dataPoints.map(d => new Date(d.t.replace(/\+00:00$/, 'Z')));
+  const solar    = dataPoints.map(d => d.solar  ?? null);
+  const acOut    = dataPoints.map(d => d.ac_out ?? null);
+  const acIn     = dataPoints.map(d => d.ac_in  ?? null);
+
+  const commonDataset = {
+    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2,
+  };
+
+  const datasets = [
+    { ...commonDataset, label: 'Solar (W)',   data: solar,  borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.1)' },
+    { ...commonDataset, label: 'AC Out (W)',  data: acOut,  borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)' },
+    { ...commonDataset, label: 'AC In (W)',   data: acIn,   borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.1)' },
+  ];
 
   if (sparkChart) {
     sparkChart.data.labels = labels;
-    sparkChart.data.datasets[0].data = values;
+    sparkChart.data.datasets.forEach((ds, i) => { ds.data = datasets[i].data; });
     sparkChart.update();
     return;
   }
 
   sparkChart = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'SOC %',
-        data: values,
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,0.08)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        borderWidth: 2,
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       animation: false,
-      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#94a3b8', boxWidth: 12, padding: 16 },
+        },
+        tooltip: { mode: 'index', intersect: false },
+      },
       scales: {
         x: {
           type: 'time',
-          time: { unit: 'minute', tooltipFormat: 'HH:mm' },
+          time: { unit: 'hour', tooltipFormat: 'HH:mm' },
           grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#64748b', maxTicksLimit: 8 },
+          ticks: { color: '#64748b', maxTicksLimit: 12 },
         },
         y: {
-          min: 0, max: 100,
+          min: 0,
           grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#64748b', callback: v => v + '%' },
+          ticks: { color: '#64748b', callback: v => v + ' W' },
         }
       }
     }
@@ -187,12 +196,15 @@ async function pollCurrent() {
 
 async function refreshSparkline() {
   try {
-    const rRes = await fetch('/api/readings?hours=2&step=60');
+    const rRes = await fetch('/api/readings?hours=24&step=600');
     if (rRes.ok) {
       const rows = await rRes.json();
-      const points = rows
-        .filter(r => r.battery_soc != null)
-        .map(r => ({ t: r.timestamp, v: r.battery_soc }));
+      const points = rows.map(r => ({
+        t:      r.timestamp,
+        solar:  r.solar_power_w  ?? null,
+        ac_out: r.ac_out_power_w ?? null,
+        ac_in:  r.ac_in_power_w  ?? null,
+      }));
       buildSparkline(points);
     }
   } catch (e) {

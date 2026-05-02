@@ -107,12 +107,21 @@ def _extract_pps_reading(raw: dict) -> dict:
         or target_device.get("charge_soc")
         or target_device.get("soc")
     )
-    # battery_capacity / battery_size come from get_bind_devices (static, Wh)
-    reading["battery_wh"] = _num(
-        target_device.get("battery_capacity")
-        or target_device.get("battery_size")
-        or target_device.get("battery_energy")
+    # battery_wh = remaining energy = total_capacity × SOC%
+    # Try a direct remaining-energy field first, then calculate from SOC
+    raw_wh = _num(
+        target_device.get("battery_energy")      # may contain remaining Wh on some firmwares
+        or target_device.get("remaining_wh")
+        or target_device.get("battery_remaining_wh")
     )
+    if raw_wh is None and reading["battery_soc"] is not None:
+        total_wh = _num(
+            target_device.get("battery_capacity")
+            or target_device.get("battery_size")
+        )
+        if total_wh:
+            raw_wh = round(total_wh * reading["battery_soc"] / 100, 1)
+    reading["battery_wh"] = raw_wh
     # A1763 MQTT field: temperature
     reading["battery_temp"] = _num(
         target_device.get("temperature")

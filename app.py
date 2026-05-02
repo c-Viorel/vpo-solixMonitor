@@ -108,18 +108,25 @@ def create_app():
                 energy_today = row
                 break
 
-        # Sparkline data for the last 2 hours (battery SOC), downsampled to 1pt/min
-        raw_spark = [
-            {"t": r["timestamp"], "v": r["battery_soc"]}
-            for r in get_readings(hours=2)
-            if r.get("battery_soc") is not None
-        ]
-        # Keep only the last point in each calendar minute
-        seen_minutes = {}
-        for pt in raw_spark:
-            minute_key = pt["t"][:16]  # "YYYY-MM-DDTHH:MM"
-            seen_minutes[minute_key] = pt
-        sparkline = list(seen_minutes.values())
+        # Attach today's energy totals into the reading dict for initial render
+        if reading and energy_today:
+            reading["solar_today_kwh"]     = energy_today.get("solar_kwh")
+            reading["discharge_today_kwh"] = energy_today.get("discharge_kwh")
+
+        # Sparkline data: Power Flow last 24 hours (solar + AC out), downsampled to 1pt/5min
+        # Sparkline data: Power Flow last 24 hours, downsampled to 1pt/5min
+        raw_rows = get_readings(hours=24)
+        seen_buckets: dict = {}
+        for r in raw_rows:
+            bucket = r["timestamp"][:15] + "0"  # floor to 10-min bucket
+            if bucket not in seen_buckets:
+                seen_buckets[bucket] = {
+                    "t": r["timestamp"],
+                    "solar":  r.get("solar_power_w"),
+                    "ac_out": r.get("ac_out_power_w"),
+                    "ac_in":  r.get("ac_in_power_w"),
+                }
+        sparkline = list(seen_buckets.values())
 
         from db import get_setting
         configured = bool(get_setting("anker_email_enc"))
@@ -321,11 +328,17 @@ def create_app():
 
     @app.route("/api/current")
     def api_current():
-        from db import get_latest_reading
-        reading = get_latest_reading()
-        if reading:
-            reading.pop("raw_json", None)  # keep response light
-        return jsonify(reading or {})
+        from db import get_latest_reading, get_energy_daily
+        reading = get_latest_reading() or {}
+        reading.pop("raw_json", None)  # keep response light
+        # Attach today's energy totals so the dashboard can display them
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        for row in get_energy_daily(days=1):
+            if row.get("date") == today_str:
+                reading["solar_today_kwh"]     = row.get("solar_kwh")
+                reading["discharge_today_kwh"] = row.get("discharge_kwh")
+                break
+        return jsonify(reading)
 
     @app.route("/api/readings")
     def api_readings():
@@ -340,8 +353,6 @@ def create_app():
         if step > 0:
             seen: dict = {}
             for r in rows:
-                if r.get("battery_soc") is None:
-                    continue
                 ts = r["timestamp"]  # e.g. "2026-04-28T13:34:21.219550+00:00"
                 # Bucket key: truncate to minute (step<=60), 5-min, 30-min, or hour
                 if step <= 60:
