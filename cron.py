@@ -54,15 +54,26 @@ def main():
     logger.info("Starting data collection for %s...", email[:3] + "***")
 
     try:
-        reading, energy = run_collection(email, password, country)
+        reading, api_energy = run_collection(email, password, country)
         save_reading(reading)
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        from db import compute_energy_from_readings
+        computed = compute_energy_from_readings(date_str)
+        energy = {
+            k: (api_energy.get(k) or 0) if (api_energy.get(k) or 0) > 0 else computed.get(k, 0)
+            for k in ("solar_kwh", "charge_kwh", "discharge_kwh", "usage_kwh")
+        }
+
         upsert_energy_daily(date_str, energy)
         logger.info(
-            "Collection OK – SOC: %s%% | In: %s W | Out: %s W",
+            "Collection OK – SOC: %s%% | In: %s W | Out: %s W | solar=%.3f charge=%.3f discharge=%.3f kWh",
             reading.get("battery_soc"),
             reading.get("total_in_w"),
             reading.get("total_out_w"),
+            energy["solar_kwh"],
+            energy["charge_kwh"],
+            energy["discharge_kwh"],
         )
     except Exception as exc:
         logger.error("Collection failed: %s", exc, exc_info=True)

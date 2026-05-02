@@ -212,6 +212,65 @@ def get_lifetime_energy() -> dict:
     return dict(row) if row else {}
 
 
+def compute_energy_from_readings(date_str: str) -> dict:
+    """
+    Compute daily energy totals by integrating instantaneous power readings.
+
+    Each power stream is tracked independently so that simultaneous solar
+    charging and AC/DC discharging (the normal C1000X operating mode) are
+    both counted correctly.
+
+    Definitions:
+      solar_kwh     – energy produced by the solar panels
+      charge_kwh    – energy drawn from the wall (AC input)
+      discharge_kwh – energy delivered to AC + DC/USB loads
+      usage_kwh     – same as discharge_kwh (alias kept for UI compat)
+
+    Gaps longer than 10 minutes (e.g. app was offline) are ignored so a
+    period of missing data doesn't artificially inflate the totals.
+    """
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT timestamp, solar_power_w, ac_in_power_w, ac_out_power_w, dc_out_power_w
+           FROM readings
+           WHERE timestamp >= ? AND timestamp < ?
+           ORDER BY timestamp ASC""",
+        (date_str + "T00:00:00", date_str + "T23:59:59.999"),
+    ).fetchall()
+    conn.close()
+
+    energy = {"solar_kwh": 0.0, "charge_kwh": 0.0, "discharge_kwh": 0.0, "usage_kwh": 0.0}
+    prev_ts = None
+
+    for row in rows:
+        try:
+            ts_raw = row["timestamp"]
+            # Normalise to UTC-aware datetime
+            ts_raw = ts_raw.replace("Z", "+00:00")
+            if "+" not in ts_raw[10:] and ts_raw[-6] not in ("+", "-"):
+                ts_raw += "+00:00"
+            ts = datetime.fromisoformat(ts_raw)
+        except (ValueError, AttributeError):
+            continue
+
+        if prev_ts is not None:
+            interval_h = (ts - prev_ts).total_seconds() / 3600.0
+            # Skip gaps > 10 min — device was offline or app was restarted
+            if 0 < interval_h <= (10 / 60):
+                solar  = max(0.0, float(row["solar_power_w"]  or 0))
+                ac_in  = max(0.0, float(row["ac_in_power_w"]  or 0))
+                ac_out = max(0.0, float(row["ac_out_power_w"] or 0))
+                dc_out = max(0.0, float(row["dc_out_power_w"] or 0))
+                energy["solar_kwh"]     += solar          * interval_h / 1000.0
+                energy["charge_kwh"]    += ac_in          * interval_h / 1000.0
+                energy["discharge_kwh"] += (ac_out + dc_out) * interval_h / 1000.0
+                energy["usage_kwh"]     += (ac_out + dc_out) * interval_h / 1000.0
+
+        prev_ts = ts
+
+    return {k: round(v, 4) for k, v in energy.items()}
+
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
