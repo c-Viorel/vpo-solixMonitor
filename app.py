@@ -5,6 +5,7 @@ Routes
 ------
 GET  /                  → dashboard (latest reading + today's stats)
 GET  /history           → charts for past 24 h / 7 d / 30 d
+GET  /cameras           → live camera feeds (requires login + mediamtx)
 GET  /login             → login form
 POST /login             → authenticate admin
 GET  /logout            → clear session
@@ -379,6 +380,22 @@ def create_app():
     def api_energy_lifetime():
         from db import get_lifetime_energy
         return jsonify(get_lifetime_energy())
+
+    @app.route("/cameras")
+    @login_required
+    def cameras():
+        """Live camera feeds via HLS (requires mediamtx service running)."""
+        enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
+        cam1_name = os.environ.get("CAMERA1_NAME", "Camera 1")
+        cam2_name = os.environ.get("CAMERA2_NAME", "Camera 2")
+        hls_pass = os.environ.get("HLS_READ_PASS", "")
+        return render_template(
+            "cameras.html",
+            cameras_enabled=enabled,
+            cam1_name=cam1_name,
+            cam2_name=cam2_name,
+            hls_pass=hls_pass,
+        )
 
     @app.route("/webhook/deploy", methods=["POST"])
     def webhook_deploy():

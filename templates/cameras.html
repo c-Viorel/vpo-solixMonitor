@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Cameras · Solix Monitor{% endblock %}
+
+{% block head %}
+<!-- hls.js for browser HLS playback -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 style="color:#f1f5f9; font-size:1.5rem; font-weight:700;">Live Cameras</h1>
+  <p style="color:#64748b; font-size:0.875rem;" class="mt-1">RTSP streams via HLS · TAPO</p>
+</div>
+
+{% if not cameras_enabled %}
+<!-- Setup instructions shown when cameras not yet configured -->
+<div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;"
+     class="p-6 mb-6">
+  <div class="flex items-start gap-4">
+    <div style="background:rgba(249,115,22,0.1); border-radius:10px; flex-shrink:0;"
+         class="w-10 h-10 flex items-center justify-center">
+      <svg class="w-5 h-5" style="color:#f97316;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+      </svg>
+    </div>
+    <div>
+      <h2 style="color:#f1f5f9; font-weight:600; font-size:1rem;" class="mb-2">Cameras not configured yet</h2>
+      <p style="color:#94a3b8; font-size:0.875rem;" class="mb-4">
+        Add the following to your <code style="color:#f97316;">/volume2/docker/solix-monitor/.env</code> file on the NAS, then restart.
+      </p>
+      <pre style="background:#060d1a; border:1px solid #152035; border-radius:8px; color:#86efac; font-size:0.8rem; overflow-x:auto;"
+           class="p-4"># Enable cameras
+CAMERAS_ENABLED=true
+
+# TAPO camera RTSP URLs
+# Format: rtsp://&lt;tapo-email&gt;:&lt;tapo-password&gt;@&lt;camera-ip&gt;:554/stream1
+CAMERA1_RTSP_URL=rtsp://your@email.com:yourpassword@192.168.50.XXX:554/stream1
+CAMERA1_NAME=Living Room
+
+CAMERA2_RTSP_URL=rtsp://your@email.com:yourpassword@192.168.50.YYY:554/stream1
+CAMERA2_NAME=Front Door
+
+# HLS viewer password (any string you choose)
+HLS_READ_PASS=changeme
+
+# Then start the mediamtx container:
+# cd /volume2/docker/solix-monitor
+# sudo docker compose --profile cameras up -d</pre>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- Camera grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- Camera 1 -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="overflow-hidden">
+    <div style="border-bottom:1px solid #152035;" class="flex items-center justify-between px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span id="dot1" class="w-2 h-2 rounded-full" style="background:#64748b;"></span>
+        <span style="color:#f1f5f9; font-weight:600; font-size:0.9rem;">{{ cam1_name }}</span>
+      </div>
+      <span id="status1" style="color:#64748b; font-size:0.75rem;">Connecting…</span>
+    </div>
+    <div style="background:#000; position:relative; aspect-ratio:16/9;">
+      <video id="video1" autoplay muted playsinline controls
+             style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+      <div id="overlay1"
+           style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);">
+        <div class="text-center">
+          <svg class="w-10 h-10 mx-auto mb-2" style="color:#334155;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <p style="color:#64748b; font-size:0.8rem;" id="overlay1-msg">Loading stream…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera 2 -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="overflow-hidden">
+    <div style="border-bottom:1px solid #152035;" class="flex items-center justify-between px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span id="dot2" class="w-2 h-2 rounded-full" style="background:#64748b;"></span>
+        <span style="color:#f1f5f9; font-weight:600; font-size:0.9rem;">{{ cam2_name }}</span>
+      </div>
+      <span id="status2" style="color:#64748b; font-size:0.75rem;">Connecting…</span>
+    </div>
+    <div style="background:#000; position:relative; aspect-ratio:16/9;">
+      <video id="video2" autoplay muted playsinline controls
+             style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+      <div id="overlay2"
+           style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);">
+        <div class="text-center">
+          <svg class="w-10 h-10 mx-auto mb-2" style="color:#334155;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <p style="color:#64748b; font-size:0.8rem;" id="overlay2-msg">Loading stream…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p style="color:#334155; font-size:0.75rem;" class="mt-4 text-center">
+  Streams auto-connect on first view · Up to ~4s latency (HLS)
+</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if cameras_enabled %}
+<script>
+const HLS_PASS = {{ hls_pass | tojson }};
+
+function buildHlsUrl(cam) {
+  const base = window.location.origin;
+  // Caddy proxies /hls/ → mediamtx:8888
+  return `${base}/hls/${cam}/index.m3u8?user=viewer&pass=${encodeURIComponent(HLS_PASS)}`;
+}
+
+function initPlayer(videoId, overlayId, statusId, dotId, cam) {
+  const video   = document.getElementById(videoId);
+  const overlay = document.getElementById(overlayId);
+  const status  = document.getElementById(statusId);
+  const dot     = document.getElementById(dotId);
+  const msg     = document.getElementById(overlayId + '-msg');
+  const url     = buildHlsUrl(cam);
+
+  function setLive() {
+    overlay.style.display = 'none';
+    dot.style.background  = '#22c55e';
+    status.style.color    = '#22c55e';
+    status.textContent    = 'Live';
+  }
+
+  function setError(text) {
+    overlay.style.display = 'flex';
+    dot.style.background  = '#ef4444';
+    status.style.color    = '#ef4444';
+    status.textContent    = 'Offline';
+    if (msg) msg.textContent = text || 'Stream unavailable';
+  }
+
+  if (Hls.isSupported()) {
+    const hls = new Hls({ lowLatencyMode: true, maxBufferLength: 4 });
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(Hls.Events.LEVEL_LOADED, setLive);
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (data.fatal) {
+        setError('Camera offline or stream not available');
+        setTimeout(() => { hls.loadSource(url); hls.startLoad(); }, 10000);
+      }
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari native HLS
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); setLive(); });
+    video.addEventListener('error', () => setError('Stream unavailable'));
+  } else {
+    setError('HLS not supported in this browser');
+  }
+}
+
+initPlayer('video1', 'overlay1', 'status1', 'dot1', 'camera1');
+initPlayer('video2', 'overlay2', 'status2', 'dot2', 'camera2');
+</script>
+{% endif %}
+{% endblock %}

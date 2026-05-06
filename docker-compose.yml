@@ -11,12 +11,30 @@ services:
       - DATA_DIR=/data
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - POLL_INTERVAL=${POLL_INTERVAL:-300}
+      - DEPLOY_WEBHOOK_TOKEN=${DEPLOY_WEBHOOK_TOKEN:-}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+      - CAMERA1_NAME=${CAMERA1_NAME:-Camera 1}
+      - CAMERA2_NAME=${CAMERA2_NAME:-Camera 2}
+      - CAMERAS_ENABLED=${CAMERAS_ENABLED:-false}
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: solix-mediamtx
+    restart: unless-stopped
+    network_mode: host   # must reach cameras on LAN (192.168.50.x)
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    environment:
+      - MTX_PATHS_CAMERA1_SOURCE=${CAMERA1_RTSP_URL:-}
+      - MTX_PATHS_CAMERA2_SOURCE=${CAMERA2_RTSP_URL:-}
+    profiles:
+      - cameras   # only starts when CAMERAS_ENABLED: docker compose --profile cameras up -d
 
 volumes:
   solix-data:
