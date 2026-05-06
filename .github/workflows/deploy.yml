@@ -10,13 +10,18 @@ jobs:
     name: Trigger NAS redeploy
     runs-on: ubuntu-latest
     steps:
-      - name: Ping webhook
+      - name: Ping webhook (with retry)
         run: |
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST https://solix.vmedia.fun/webhook/deploy \
-            -H "X-Deploy-Token: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}")
-          echo "Webhook response: $HTTP"
-          if [ "$HTTP" != "202" ]; then
-            echo "Webhook failed (HTTP $HTTP)" && exit 1
-          fi
-          echo "✅ Redeploy triggered — NAS will rebuild and restart within ~2 min"
+          for i in 1 2 3 4 5; do
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST https://solix.vmedia.fun/webhook/deploy \
+              -H "X-Deploy-Token: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}")
+            echo "Attempt $i: HTTP $HTTP"
+            if [ "$HTTP" = "202" ]; then
+              echo "✅ Redeploy triggered — NAS will rebuild within ~2 min"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "❌ Webhook failed after 5 attempts (last HTTP: $HTTP)"
+          exit 1
