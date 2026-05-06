@@ -6,21 +6,12 @@ on:
       - main
 
 jobs:
-  deploy:
-    name: SSH Deploy to UGreen NAS
+  notify:
+    name: Notify deploy triggered
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.NAS_HOST }}
-          port: ${{ secrets.NAS_PORT }}
-          username: ${{ secrets.NAS_USER }}
-          key: ${{ secrets.NAS_SSH_KEY }}
-          script: |
-            set -e
-            cd /volume2/docker/solix-monitor
-            git pull origin main
-            docker compose build --quiet
-            docker compose up -d --remove-orphans
-            docker compose ps
+      - name: Deploy triggered
+        run: |
+          echo "✅ Push to main detected."
+          echo "The NAS cron job will auto-pull and rebuild within 5 minutes."
+          echo "Monitor: tail -f /volume2/docker/solix-monitor/deploy.log"
