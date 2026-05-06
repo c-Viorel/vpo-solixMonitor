@@ -130,6 +130,17 @@ def _collect_job(app) -> None:
             logger.error("Collection failed: %s", exc, exc_info=True)
 
 
+def _purge_job(app) -> None:
+    """Weekly: delete readings older than 90 days and VACUUM the DB."""
+    with app.app_context():
+        try:
+            from db import purge_old_readings
+            deleted = purge_old_readings()
+            logger.info("DB purge: removed %d old readings and VACUUMed.", deleted)
+        except Exception as exc:
+            logger.error("DB purge failed: %s", exc)
+
+
 def start_scheduler(app) -> None:
     """Start the APScheduler BackgroundScheduler + MQTT listener."""
     global _scheduler
@@ -146,6 +157,16 @@ def start_scheduler(app) -> None:
         trigger=IntervalTrigger(seconds=Config.POLL_INTERVAL),
         id="collect_data",
         name="Anker API data collection",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        func=_purge_job,
+        args=[app],
+        trigger=IntervalTrigger(weeks=1),
+        id="purge_old_data",
+        name="Purge old readings",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

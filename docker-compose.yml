@@ -1,0 +1,23 @@
+services:
+  solix-monitor:
+    build: .
+    container_name: solix-monitor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - solix-data:/data
+    environment:
+      - DATA_DIR=/data
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - POLL_INTERVAL=${POLL_INTERVAL:-300}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  solix-data:
+    driver: local

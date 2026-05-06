@@ -1,4 +1,4 @@
-name: Deploy to Railway
+name: Deploy to NAS
 
 on:
   push:
@@ -7,17 +7,22 @@ on:
 
 jobs:
   deploy:
-    name: Railway Deploy
+    name: SSH Deploy to UGreen NAS
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy
-        run: railway up --detach --service solix-monitor
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.NAS_HOST }}
+          port: ${{ secrets.NAS_PORT }}
+          username: ${{ secrets.NAS_USER }}
+          key: ${{ secrets.NAS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull origin main
+            docker compose pull --quiet || true
+            docker compose build --quiet
+            docker compose up -d --remove-orphans
+            docker compose ps
 

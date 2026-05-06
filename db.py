@@ -33,7 +33,7 @@ def get_db() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def init_db() -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then run housekeeping."""
     conn = get_db()
     with conn:
         conn.executescript("""
@@ -81,7 +81,28 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_readings_ts
                 ON readings (timestamp);
         """)
+
+        # One-time migration: wipe raw_json column (was filling up disk)
+        conn.execute("UPDATE readings SET raw_json = NULL WHERE raw_json IS NOT NULL")
+
+    # Purge readings older than 90 days and VACUUM to reclaim disk space
+    purge_old_readings(conn)
     conn.close()
+
+
+def purge_old_readings(conn: sqlite3.Connection | None = None) -> int:
+    """Delete readings older than 90 days and VACUUM. Returns rows deleted."""
+    close = conn is None
+    if conn is None:
+        conn = get_db()
+    cutoff = (datetime.utcnow() - timedelta(days=90)).isoformat()
+    cur = conn.execute("DELETE FROM readings WHERE timestamp < ?", (cutoff,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.execute("VACUUM")
+    if close:
+        conn.close()
+    return deleted
 
 
 # ---------------------------------------------------------------------------
@@ -97,12 +118,12 @@ def save_reading(data: dict) -> None:
                 timestamp, battery_soc, battery_wh, battery_temp,
                 solar_power_w, ac_in_power_w, dc_in_power_w, total_in_w,
                 ac_out_power_w, dc_out_power_w, total_out_w,
-                charging_status, device_online, data_source, raw_json
+                charging_status, device_online, data_source
             ) VALUES (
                 :timestamp, :battery_soc, :battery_wh, :battery_temp,
                 :solar_power_w, :ac_in_power_w, :dc_in_power_w, :total_in_w,
                 :ac_out_power_w, :dc_out_power_w, :total_out_w,
-                :charging_status, :device_online, :data_source, :raw_json
+                :charging_status, :device_online, :data_source
             )
             """,
             {
@@ -120,7 +141,6 @@ def save_reading(data: dict) -> None:
                 "charging_status": data.get("charging_status"),
                 "device_online": 1 if data.get("device_online") else 0,
                 "data_source": data.get("data_source", "api"),
-                "raw_json": json.dumps(data.get("raw")),
             },
         )
     conn.close()
