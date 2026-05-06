@@ -14,45 +14,233 @@
 </div>
 
 {% if not cameras_enabled %}
-<!-- Setup instructions shown when cameras not yet configured -->
-<div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;"
-     class="p-6 mb-6">
-  <div class="flex items-start gap-4">
-    <div style="background:rgba(249,115,22,0.1); border-radius:10px; flex-shrink:0;"
-         class="w-10 h-10 flex items-center justify-center">
-      <svg class="w-5 h-5" style="color:#f97316;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round"
-          d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-      </svg>
-    </div>
-    <div>
-      <h2 style="color:#f1f5f9; font-weight:600; font-size:1rem;" class="mb-2">Cameras not configured yet</h2>
-      <p style="color:#94a3b8; font-size:0.875rem;" class="mb-4">
-        Add the following to your <code style="color:#f97316;">/volume2/docker/solix-monitor/.env</code> file on the NAS, then restart.
-      </p>
-      <pre style="background:#060d1a; border:1px solid #152035; border-radius:8px; color:#86efac; font-size:0.8rem; overflow-x:auto;"
-           class="p-4"># Enable cameras
-CAMERAS_ENABLED=true
+<!-- Setup guide -->
+<div class="space-y-5">
 
-# TAPO camera RTSP URLs
-# Format: rtsp://&lt;tapo-email&gt;:&lt;tapo-password&gt;@&lt;camera-ip&gt;:554/stream1
-CAMERA1_RTSP_URL=rtsp://your@email.com:yourpassword@192.168.50.XXX:554/stream1
-CAMERA1_NAME=Living Room
-
-CAMERA2_RTSP_URL=rtsp://your@email.com:yourpassword@192.168.50.YYY:554/stream1
-CAMERA2_NAME=Front Door
-
-# HLS viewer password (any string you choose)
-HLS_READ_PASS=changeme
-
-# Then start the mediamtx container:
-# cd /volume2/docker/solix-monitor
-# sudo docker compose --profile cameras up -d</pre>
+  <!-- Step 1: Find IPs -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-5">
+    <div class="flex items-start gap-4">
+      <div style="background:rgba(34,197,94,0.1); border-radius:10px; min-width:2.5rem; height:2.5rem;"
+           class="flex items-center justify-center">
+        <span style="color:#22c55e; font-weight:700; font-size:0.9rem;">1</span>
+      </div>
+      <div>
+        <h2 style="color:#f1f5f9; font-weight:600; font-size:0.95rem;" class="mb-1">
+          Find your camera IPs — in the TAPO app
+        </h2>
+        <p style="color:#94a3b8; font-size:0.85rem;" class="mb-3">
+          Even without router access, the TAPO app shows the camera's local IP:
+        </p>
+        <ol style="color:#94a3b8; font-size:0.85rem;" class="space-y-1 list-decimal list-inside">
+          <li>Open the <strong style="color:#f1f5f9;">TAPO app</strong> → tap the camera</li>
+          <li>Tap the <strong style="color:#f1f5f9;">⚙️ gear icon</strong> (top right)</li>
+          <li>Scroll to <strong style="color:#f1f5f9;">Device Info</strong></li>
+          <li>Note the <strong style="color:#f97316;">IP Address</strong> shown there</li>
+        </ol>
+        <p style="color:#64748b; font-size:0.8rem;" class="mt-3">
+          ℹ️ The RTSP stream only works while your NAS and cameras are on the same local network (or connected via VPN).
+        </p>
+      </div>
     </div>
   </div>
+
+  <!-- Step 2: If cameras are remote -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-5">
+    <div class="flex items-start gap-4">
+      <div style="background:rgba(99,102,241,0.1); border-radius:10px; min-width:2.5rem; height:2.5rem;"
+           class="flex items-center justify-center">
+        <span style="color:#818cf8; font-weight:700; font-size:0.9rem;">2</span>
+      </div>
+      <div class="w-full">
+        <h2 style="color:#f1f5f9; font-weight:600; font-size:0.95rem;" class="mb-1">
+          Cameras on a different network? Use Tailscale (free, no port forwarding)
+        </h2>
+        <p style="color:#94a3b8; font-size:0.85rem;" class="mb-3">
+          Install Tailscale on any device on the cameras' network (PC, laptop, phone).
+          It creates a private VPN tunnel — your NAS can then reach the cameras as if they were local.
+        </p>
+        <div style="background:#060d1a; border:1px solid #152035; border-radius:8px; font-size:0.8rem;" class="p-3 space-y-2">
+          <p style="color:#64748b;">On the remote device (same network as cameras):</p>
+          <pre style="color:#86efac; overflow-x:auto;">curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up</pre>
+          <p style="color:#64748b; margin-top:0.5rem;">On your NAS:</p>
+          <pre style="color:#86efac; overflow-x:auto;">curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up</pre>
+          <p style="color:#64748b; margin-top:0.5rem;">Then use the camera's <strong style="color:#f1f5f9;">Tailscale IP</strong> (100.x.x.x) as the camera IP below.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Configure -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-5">
+    <div class="flex items-start gap-4">
+      <div style="background:rgba(249,115,22,0.1); border-radius:10px; min-width:2.5rem; height:2.5rem;"
+           class="flex items-center justify-center">
+        <span style="color:#f97316; font-weight:700; font-size:0.9rem;">3</span>
+      </div>
+      <div class="w-full">
+        <h2 style="color:#f1f5f9; font-weight:600; font-size:0.95rem;" class="mb-2">
+          Configure & enable cameras
+        </h2>
+        <p style="color:#94a3b8; font-size:0.85rem;" class="mb-3">
+          Add to <code style="color:#f97316;">/volume2/docker/solix-monitor/.env</code> on your NAS:
+        </p>
+        <pre style="background:#060d1a; border:1px solid #152035; border-radius:8px; color:#86efac; font-size:0.78rem; overflow-x:auto;"
+             class="p-4">CAMERAS_ENABLED=true
+
+# TAPO RTSP format: rtsp://&lt;email&gt;:&lt;tapo-password&gt;@&lt;camera-ip&gt;:554/stream1
+CAMERA1_RTSP_URL=rtsp://your@email.com:password@192.168.50.XXX:554/stream1
+CAMERA1_NAME=Living Room
+
+CAMERA2_RTSP_URL=rtsp://your@email.com:password@192.168.50.YYY:554/stream1
+CAMERA2_NAME=Front Door
+
+# Password to protect the HLS stream (anything you like)
+HLS_READ_PASS=changeme</pre>
+        <p style="color:#94a3b8; font-size:0.85rem;" class="mt-3 mb-2">
+          Then start the MediaMTX container and restart the app:
+        </p>
+        <pre style="background:#060d1a; border:1px solid #152035; border-radius:8px; color:#86efac; font-size:0.78rem; overflow-x:auto;"
+             class="p-3">cd /volume2/docker/solix-monitor
+sudo docker compose --profile cameras up -d
+sudo docker compose restart solix-monitor</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note about TAPO cloud -->
+  <div style="background:rgba(99,102,241,0.05); border:1px solid rgba(99,102,241,0.2); border-radius:12px;" class="p-4">
+    <p style="color:#818cf8; font-size:0.8rem;">
+      <strong>Why not TAPO cloud API?</strong> The TAPO app streams video via a proprietary DTLS/WebRTC relay
+      — TP-Link doesn't expose this to third parties. There is no official cloud API for live video.
+      The RTSP approach above is the standard way to access TAPO cameras programmatically.
+    </p>
+  </div>
+
 </div>
 
 {% else %}
+<!-- Camera grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <!-- Camera 1 -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="overflow-hidden">
+    <div style="border-bottom:1px solid #152035;" class="flex items-center justify-between px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span id="dot1" class="w-2 h-2 rounded-full" style="background:#64748b;"></span>
+        <span style="color:#f1f5f9; font-weight:600; font-size:0.9rem;">{{ cam1_name }}</span>
+      </div>
+      <span id="status1" style="color:#64748b; font-size:0.75rem;">Connecting…</span>
+    </div>
+    <div style="background:#000; position:relative; aspect-ratio:16/9;">
+      <video id="video1" autoplay muted playsinline controls
+             style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+      <div id="overlay1"
+           style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);">
+        <div class="text-center">
+          <svg class="w-10 h-10 mx-auto mb-2" style="color:#334155;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <p style="color:#64748b; font-size:0.8rem;" id="overlay1-msg">Loading stream…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera 2 -->
+  <div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="overflow-hidden">
+    <div style="border-bottom:1px solid #152035;" class="flex items-center justify-between px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span id="dot2" class="w-2 h-2 rounded-full" style="background:#64748b;"></span>
+        <span style="color:#f1f5f9; font-weight:600; font-size:0.9rem;">{{ cam2_name }}</span>
+      </div>
+      <span id="status2" style="color:#64748b; font-size:0.75rem;">Connecting…</span>
+    </div>
+    <div style="background:#000; position:relative; aspect-ratio:16/9;">
+      <video id="video2" autoplay muted playsinline controls
+             style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+      <div id="overlay2"
+           style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.7);">
+        <div class="text-center">
+          <svg class="w-10 h-10 mx-auto mb-2" style="color:#334155;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <p style="color:#64748b; font-size:0.8rem;" id="overlay2-msg">Loading stream…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<p style="color:#334155; font-size:0.75rem;" class="mt-4 text-center">
+  Streams auto-connect on first view · ~2-4s latency (HLS)
+</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if cameras_enabled %}
+<script>
+const HLS_PASS = {{ hls_pass | tojson }};
+
+function buildHlsUrl(cam) {
+  const base = window.location.origin;
+  return `${base}/hls/${cam}/index.m3u8?user=viewer&pass=${encodeURIComponent(HLS_PASS)}`;
+}
+
+function initPlayer(videoId, overlayId, statusId, dotId, cam) {
+  const video   = document.getElementById(videoId);
+  const overlay = document.getElementById(overlayId);
+  const status  = document.getElementById(statusId);
+  const dot     = document.getElementById(dotId);
+  const msg     = document.getElementById(overlayId + '-msg');
+  const url     = buildHlsUrl(cam);
+
+  function setLive() {
+    overlay.style.display = 'none';
+    dot.style.background  = '#22c55e';
+    status.style.color    = '#22c55e';
+    status.textContent    = 'Live';
+  }
+
+  function setError(text) {
+    overlay.style.display = 'flex';
+    dot.style.background  = '#ef4444';
+    status.style.color    = '#ef4444';
+    status.textContent    = 'Offline';
+    if (msg) msg.textContent = text || 'Stream unavailable';
+  }
+
+  if (Hls.isSupported()) {
+    const hls = new Hls({ lowLatencyMode: true, maxBufferLength: 4 });
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(Hls.Events.LEVEL_LOADED, setLive);
+    hls.on(Hls.Events.ERROR, (_, data) => {
+      if (data.fatal) {
+        setError('Camera offline or stream unavailable');
+        setTimeout(() => { hls.loadSource(url); hls.startLoad(); }, 10000);
+      }
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); setLive(); });
+    video.addEventListener('error', () => setError('Stream unavailable'));
+  } else {
+    setError('HLS not supported in this browser');
+  }
+}
+
+initPlayer('video1', 'overlay1', 'status1', 'dot1', 'camera1');
+initPlayer('video2', 'overlay2', 'status2', 'dot2', 'camera2');
+</script>
+{% endif %}
+{% endblock %}
+
 <!-- Camera grid -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
