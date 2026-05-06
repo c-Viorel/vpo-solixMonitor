@@ -16,7 +16,93 @@ The C1000X (**model A1761**) is a standalone portable power station.
 The Anker REST cloud API provides **minimal data** for standalone devices – primarily energy statistics.  
 **Real-time power values** (SOC, watts in/out, temperatures) come via the MQTT cloud server.
 
-The collector tries to extract all available fields from the API cache. If your device is in a "Power System" in the Anker app, more data will be available.
+---
+
+## UGreen NAS deployment (Docker + Caddy)
+
+This is the recommended self-hosted deployment. You need:
+- Docker and `docker compose` on the NAS
+- Caddy as a reverse proxy (already configured)
+- A subdomain pointing to your NAS (via DDNS or static IP)
+
+### 1 – Clone the repo on the NAS
+
+SSH into your NAS and run:
+
+```bash
+git clone https://github.com/c-Viorel/vpo-solixMonitor.git /opt/solix-monitor
+cd /opt/solix-monitor
+```
+
+> Adjust the path to wherever you keep your Docker apps.
+
+### 2 – Create your `.env` file
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Set a strong `SECRET_KEY`:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 3 – Start the container
+
+```bash
+docker compose up -d
+```
+
+The app will be available at `http://localhost:8080` on the NAS.
+
+### 4 – Configure Caddy
+
+Add this block to your existing Caddyfile (replace with your actual subdomain):
+
+```caddy
+solix.yourdomain.com {
+    reverse_proxy localhost:8080
+}
+```
+
+Then reload Caddy:
+```bash
+caddy reload   # or: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+```
+
+Caddy will automatically provision a Let's Encrypt SSL certificate.
+
+### 5 – Enable auto-deploy from GitHub
+
+This lets every `git push` to `main` automatically redeploy the app on your NAS.
+
+#### Generate a deploy SSH key (on your local machine):
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/solix_deploy
+```
+
+#### Add the public key to your NAS:
+```bash
+cat ~/.ssh/solix_deploy.pub
+# Paste this into ~/.ssh/authorized_keys on the NAS
+```
+
+#### Add these secrets to GitHub repo → Settings → Secrets → Actions:
+
+| Secret | Value |
+|---|---|
+| `NAS_HOST` | Your NAS IP or DDNS hostname |
+| `NAS_PORT` | SSH port (usually `22`) |
+| `NAS_USER` | SSH username on NAS |
+| `NAS_SSH_KEY` | Contents of `~/.ssh/solix_deploy` (private key) |
+| `DEPLOY_PATH` | Path where repo is cloned, e.g. `/opt/solix-monitor` |
+
+Every push to `main` will now SSH into the NAS, `git pull`, rebuild the image, and restart the container automatically.
+
+### 6 – First visit
+
+Open `https://solix.yourdomain.com`, set your **admin password**, then go to **Admin** and enter your **Anker credentials**.
 
 ---
 
@@ -28,12 +114,52 @@ cd solix_performance
 bash setup.sh
 ```
 
-Then open [http://localhost:5000](http://localhost:5000).  
-On first visit you will be asked to set an admin password.
+Then open [http://localhost:5000](http://localhost:5000).
 
 ---
 
-## Hostinger deployment
+## Anker credentials
+
+| Field | Description |
+|---|---|
+| **Email** | The email address of your Anker account |
+| **Password** | Your Anker account password |
+| **Country** | 2-letter ISO country code (e.g. `us`, `de`, `gb`) |
+
+> Credentials are stored **AES-256 encrypted** (Fernet) in the local SQLite database.
+
+---
+
+## Data collected
+
+Each poll stores: Battery SOC (%), remaining Wh, temperature (°C), solar input (W), AC/DC in/out (W), charging status, device online state, and daily energy totals (kWh).  
+Readings older than **90 days** are automatically purged to keep DB size small.
+
+---
+
+## File structure
+
+```
+solix_performance/
+├── app.py               Flask app (routes + auth)
+├── config.py            Configuration
+├── db.py                SQLite helpers
+├── collector.py         Anker API + MQTT data collector
+├── scheduler.py         APScheduler background poller
+├── cron.py              Standalone cron job script
+├── crypto_utils.py      Fernet credential encryption
+├── passenger_wsgi.py    WSGI entry point
+├── Dockerfile           Container image definition
+├── docker-compose.yml   Docker Compose for NAS deployment
+├── Caddyfile.example    Caddy reverse proxy snippet
+├── requirements.txt
+├── .env.example
+└── data/                Auto-created at runtime (gitignored)
+    ├── solix.db
+    ├── .enc_key
+    └── flask_sessions/
+```
+
 
 ### Requirements
 - Hostinger Business / Cloud hosting or VPS

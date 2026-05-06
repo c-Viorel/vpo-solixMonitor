@@ -4,7 +4,7 @@ services:
     container_name: solix-monitor
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"   # only accessible via Caddy reverse proxy
     volumes:
       - solix-data:/data
     environment:

@@ -1,0 +1,6 @@
+# Add this block to your existing Caddyfile
+# Replace solix.yourdomain.com with your actual subdomain
+
+solix.yourdomain.com {
+    reverse_proxy localhost:8080
+}
