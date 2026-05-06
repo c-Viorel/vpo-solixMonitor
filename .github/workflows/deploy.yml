@@ -6,12 +6,17 @@ on:
       - main
 
 jobs:
-  notify:
-    name: Notify deploy triggered
+  deploy:
+    name: Trigger NAS redeploy
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy triggered
+      - name: Ping webhook
         run: |
-          echo "✅ Push to main detected."
-          echo "The NAS cron job will auto-pull and rebuild within 5 minutes."
-          echo "Monitor: tail -f /volume2/docker/solix-monitor/deploy.log"
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST https://solix.vmedia.fun/webhook/deploy \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}")
+          echo "Webhook response: $HTTP"
+          if [ "$HTTP" != "202" ]; then
+            echo "Webhook failed (HTTP $HTTP)" && exit 1
+          fi
+          echo "✅ Redeploy triggered — NAS will rebuild and restart within ~2 min"

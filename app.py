@@ -380,6 +380,29 @@ def create_app():
         from db import get_lifetime_energy
         return jsonify(get_lifetime_energy())
 
+    @app.route("/webhook/deploy", methods=["POST"])
+    def webhook_deploy():
+        """GitHub Actions calls this after every push to trigger an immediate redeploy."""
+        import hmac, subprocess, threading
+        token = os.environ.get("DEPLOY_WEBHOOK_TOKEN", "")
+        if not token:
+            return jsonify({"error": "Webhook not configured"}), 503
+        provided = request.headers.get("X-Deploy-Token", "")
+        if not hmac.compare_digest(provided, token):
+            return jsonify({"error": "Unauthorized"}), 401
+        deploy_script = os.path.join(os.path.dirname(__file__), "deploy.sh")
+        if not os.path.exists(deploy_script):
+            return jsonify({"error": "deploy.sh not found"}), 500
+        def run_deploy():
+            subprocess.Popen(
+                ["bash", deploy_script],
+                stdout=open("/tmp/deploy_webhook.log", "w"),
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+            )
+        threading.Thread(target=run_deploy, daemon=True).start()
+        return jsonify({"status": "deploy triggered"}), 202
+
     @app.route("/api/debug-device")
     @login_required
     def api_debug_device():
