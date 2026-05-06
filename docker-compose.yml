@@ -4,7 +4,7 @@ services:
     container_name: solix-monitor
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"   # only accessible via Caddy reverse proxy
+      - "8090:8080"   # Caddy proxies solix.vmedia.fun → 192.168.50.195:8090
     volumes:
       - solix-data:/data
     environment:

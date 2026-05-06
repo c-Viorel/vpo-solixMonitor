@@ -19,10 +19,8 @@ jobs:
           key: ${{ secrets.NAS_SSH_KEY }}
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
+            cd /volume2/docker/solix-monitor
             git pull origin main
-            docker compose pull --quiet || true
             docker compose build --quiet
             docker compose up -d --remove-orphans
             docker compose ps
-
