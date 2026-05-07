@@ -610,29 +610,27 @@ def create_app():
         status = get_motion_status(mtx_cam)
         return jsonify(status), 200, {"Cache-Control": "no-store"}
 
-    _analysis_running = {}  # cam → True/False
-
     @app.route("/recordings/analyze/<cam>", methods=["POST"])
     @login_required
     def recordings_analyze(cam):
         """Trigger motion analysis for all unanalyzed segments of a camera."""
         import threading
-        from db import get_setting
+        from db import get_setting, set_setting
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        if _analysis_running.get(cam):
+        if get_setting(f"analysis_running_{cam}") == "1":
             return jsonify({"status": "already_running"}), 200
         quality = get_setting("dvr_record_quality", "sd")
         mtx_cam = cam if quality == "hd" else cam + "lo"
 
         def run():
-            _analysis_running[cam] = True
+            set_setting(f"analysis_running_{cam}", "1")
             try:
                 from thumbnail_gen import generate_pending_sprites
                 generate_pending_sprites(mtx_cam)
             finally:
-                _analysis_running[cam] = False
+                set_setting(f"analysis_running_{cam}", "0")
 
         threading.Thread(target=run, daemon=True).start()
         return jsonify({"status": "started"}), 202
@@ -640,11 +638,13 @@ def create_app():
     @app.route("/recordings/analyze-status/<cam>")
     @login_required
     def recordings_analyze_status(cam):
-        """Check if analysis is currently running for a camera."""
+        """Check if analysis is currently running for a camera (DB-backed, worker-safe)."""
+        from db import get_setting
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        return jsonify({"running": bool(_analysis_running.get(cam))})
+        running = get_setting(f"analysis_running_{cam}") == "1"
+        return jsonify({"running": running})
 
     @app.route("/cameras")
     @login_required
