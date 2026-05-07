@@ -312,8 +312,7 @@ function renderTimeline() {
     div.dataset.start = seg.start;
     div.style.left  = left + '%';
     div.style.width = Math.max(width, 0.3) + '%';
-    // No native browser tooltip — custom preview handles hover
-    div.addEventListener('click', e => { e.stopPropagation(); playSeg(seg); });
+    // Click is handled by the bar's handleClick handler for accurate seek
     bar.appendChild(div);
   });
 
@@ -446,6 +445,14 @@ function playSeg(seg, seekToTs) {
     video.removeEventListener('error', onErr);
     spinner.style.display = 'none';
     overlayMsg.textContent = 'Eroare la încărcarea segmentului';
+  }, { once: true });
+
+  // Auto-advance to next segment when current one ends
+  video.addEventListener('ended', function onEnded() {
+    const idx = segments.findIndex(s => s.start === seg.start);
+    if (idx >= 0 && idx < segments.length - 1) {
+      playSeg(segments[idx + 1]);
+    }
   }, { once: true });
 
   // Move cursor to clicked position
