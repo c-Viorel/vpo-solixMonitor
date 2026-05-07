@@ -72,7 +72,11 @@
 <div class="mb-5 flex items-center justify-between">
   <div>
     <h1 style="color:#f1f5f9; font-size:1.4rem; font-weight:700;">📼 Playback</h1>
-    <p style="color:#64748b; font-size:0.8rem;" class="mt-1">Ultimele 24h · 5 minute / segment</p>
+    <p style="color:#64748b; font-size:0.8rem;" class="mt-1">
+      Ultimele 24h · 5 minute / segment ·
+      <span style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:4px; padding:1px 6px; font-size:0.72rem; font-weight:600;">SD 640p</span>
+      <span style="color:#475569; font-size:0.72rem;"> · economie spațiu (~16MB/5min)</span>
+    </p>
   </div>
   <!-- Camera selector -->
   <div style="display:flex; gap:8px;">
@@ -229,12 +233,17 @@ function renderSegList() {
 }
 
 // ─── Playback ─────────────────────────────────────────────────────────────
-function playSeg(seg) {
+function playSeg(seg, seekToTs) {
   currentSeg = seg;
   const video = document.getElementById('dvr-video');
   const overlay = document.getElementById('dvr-overlay');
   const spinner = document.getElementById('dvr-spinner');
   const overlayMsg = document.getElementById('dvr-overlay-msg');
+
+  // Offset (seconds) within segment to seek to after load
+  const seekOffset = seekToTs
+    ? Math.max(0, (seekToTs - new Date(seg.start).getTime()) / 1000)
+    : 0;
 
   overlay.style.display = 'flex';
   spinner.style.display = 'block';
@@ -244,13 +253,17 @@ function playSeg(seg) {
   video.load();
   video.addEventListener('canplay', function onReady() {
     video.removeEventListener('canplay', onReady);
+    if (seekOffset > 1) {
+      video.currentTime = seekOffset;
+    }
     overlay.style.display = 'none';
     spinner.style.display = 'none';
     video.play().catch(() => {});
-    // Update playing info
+    // Update playing info — show actual seek time, not segment start
+    const displayTs = seekToTs || new Date(seg.start).getTime();
     document.getElementById('playing-info').hidden = false;
-    document.getElementById('playing-time').textContent = formatDateTime(new Date(seg.start).getTime());
-    document.getElementById('playing-dur').textContent = Math.round(seg.duration) + 's';
+    document.getElementById('playing-time').textContent = formatDateTime(displayTs);
+    document.getElementById('playing-dur').textContent = Math.round(seg.duration) + 's total';
   }, { once: true });
   video.addEventListener('error', function onErr() {
     video.removeEventListener('error', onErr);
@@ -258,9 +271,10 @@ function playSeg(seg) {
     overlayMsg.textContent = 'Eroare la încărcarea segmentului';
   }, { once: true });
 
-  // Update cursor position
+  // Update cursor to actual clicked position
   const span = timeRange.end - timeRange.start;
-  const pos = (new Date(seg.start).getTime() - timeRange.start) / span * 100;
+  const cursorTs = seekToTs || new Date(seg.start).getTime();
+  const pos = (cursorTs - timeRange.start) / span * 100;
   document.getElementById('timeline-cursor').style.left = pos + '%';
   document.getElementById('timeline-fill').style.width = pos + '%';
 }
@@ -371,11 +385,11 @@ function hideThumb() {
 function handleClick(e) {
   const bar = document.getElementById('timeline-bar');
   const rect = bar.getBoundingClientRect();
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientX = e.touches ? e.changedTouches[0].clientX : e.clientX;
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   const ts = posToTime(pct);
   const seg = segAtTime(ts);
-  if (seg) playSeg(seg);
+  if (seg) playSeg(seg, ts);   // pass exact click timestamp for seek
 }
 
 // Wire up timeline events
