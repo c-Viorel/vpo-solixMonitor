@@ -292,7 +292,7 @@ function renderTimeline() {
     div.dataset.start = seg.start;
     div.style.left  = left + '%';
     div.style.width = Math.max(width, 0.3) + '%';
-    div.title = formatTime(s) + ' · ' + Math.round(seg.duration) + 's';
+    // No native browser tooltip — custom preview handles hover
     div.addEventListener('click', e => { e.stopPropagation(); playSeg(seg); });
     bar.appendChild(div);
   });
@@ -501,50 +501,43 @@ function showThumb(e) {
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   const ts = posToTime(pct);
 
-  // Move cursor (hover only, no playhead flag)
+  // Move hover cursor
   document.getElementById('timeline-cursor').style.left = (pct * 100) + '%';
   document.getElementById('timeline-cursor').style.display = 'block';
 
-  // Find segment at this time
   const seg = segAtTime(ts);
   if (!seg) { preview.style.display = 'none'; return; }
 
-  // Show time label
   document.getElementById('thumb-time').textContent = formatDateTime(ts);
 
-  // Fetch sprite if needed
-  if (!sprites[seg.start]) {
-    fetchSprite(seg);
-    preview.style.display = 'none';
-    return;
-  }
-  const sp = sprites[seg.start];
-  if (!sp.img || !sp.meta) { preview.style.display = 'none'; return; }
-
-  // Calculate which thumbnail to show
-  const segOffset = (ts - new Date(seg.start).getTime()) / 1000;
-  const thumbIdx = Math.min(Math.floor(segOffset / sp.meta.interval), sp.meta.count - 1);
-  const col = thumbIdx % sp.meta.cols;
-  const row = Math.floor(thumbIdx / sp.meta.cols);
-  const bgX = col * sp.meta.width;
-  const bgY = row * sp.meta.height;
-
-  // Use CSS background-image for instant, flicker-free thumbnail crop
   const img = document.getElementById('thumb-img');
-  img.style.cssText = `
-    width: ${sp.meta.width}px;
-    height: ${sp.meta.height}px;
-    background: url('${sp.img}') -${bgX}px -${bgY}px;
-    background-size: ${sp.meta.sprite_w}px ${sp.meta.sprite_h}px;
-    display: block;
-  `;
-  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // blank placeholder
 
-  // Position preview (clamp to viewport)
-  const barRect = document.getElementById('timeline-bar').getBoundingClientRect();
-  const previewW = sp.meta.width + 6;
-  const rawLeft = pct * barRect.width;
-  const clampedLeft = Math.max(previewW / 2, Math.min(rawLeft, barRect.width - previewW / 2));
+  // Try to show sprite thumbnail
+  if (!sprites[seg.start]) fetchSprite(seg);
+  const sp = sprites[seg.start];
+
+  if (sp && sp.img && sp.meta) {
+    const segOffset = (ts - new Date(seg.start).getTime()) / 1000;
+    const thumbIdx = Math.min(Math.floor(segOffset / sp.meta.interval), sp.meta.count - 1);
+    const bgX = (thumbIdx % sp.meta.cols) * sp.meta.width;
+    const bgY = Math.floor(thumbIdx / sp.meta.cols) * sp.meta.height;
+    img.style.cssText = `
+      width: ${sp.meta.width}px;
+      height: ${sp.meta.height}px;
+      background: url('${sp.img}') -${bgX}px -${bgY}px;
+      background-size: ${sp.meta.sprite_w}px ${sp.meta.sprite_h}px;
+      display: block;
+    `;
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  } else {
+    // No sprite yet — show time-only pill (no image)
+    img.style.cssText = 'display: none;';
+  }
+
+  // Position preview, clamped so it never overflows the bar edges
+  const previewW = (sp && sp.meta) ? (sp.meta.width + 8) : 130;
+  const rawLeft = pct * rect.width;
+  const clampedLeft = Math.max(previewW / 2, Math.min(rawLeft, rect.width - previewW / 2));
   preview.style.left = clampedLeft + 'px';
   preview.style.display = 'block';
 }
