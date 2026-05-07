@@ -134,6 +134,17 @@
 }
 .seg-list-row:hover  { background: #0f1e33; border-color: #1e3050; }
 .seg-list-row.active { background: #111e35; border-color: rgba(99,102,241,0.4); }
+/* Analysis status dot */
+.status-dot {
+  flex-shrink: 0;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.status-dot.pending  { color: #334155; background: transparent; }
+.status-dot.clear    { color: #1e3a5f; background: #1e3a5f; }
+.status-dot.motion   { color: #ca8a04; background: rgba(234,179,8,0.7); }
+.status-dot.person   { color: #dc2626; background: rgba(239,68,68,0.75); }
 </style>
 {% endblock %}
 
@@ -336,9 +347,20 @@ function renderSegList() {
         <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
       <span style="color:#64748b; font-size:0.78rem; font-variant-numeric:tabular-nums;">${formatDateTime(new Date(seg.start).getTime())}</span>
-      <span style="color:#2d3f5a; font-size:0.72rem; margin-left:auto;">${Math.round(seg.duration)}s</span>`;
+      <span style="color:#2d3f5a; font-size:0.72rem; margin-left:auto;">${Math.round(seg.duration)}s</span>
+      <span class="status-dot pending" data-seg="${seg.start}" title="Nu a fost analizat încă"></span>`;
     d.addEventListener('click', () => playSeg(seg));
     list.appendChild(d);
+  });
+}
+
+function updateSegListStatus(statusMap) {
+  const LABELS = { pending: 'Neadalizat', clear: 'Fără mișcare', motion: 'Mișcare detectată', person: 'Persoană detectată' };
+  document.querySelectorAll('.status-dot[data-seg]').forEach(dot => {
+    const seg = dot.dataset.seg;
+    const st = statusMap[seg] || 'pending';
+    dot.className = `status-dot ${st}`;
+    dot.title = LABELS[st] || st;
   });
 }
 
@@ -450,10 +472,18 @@ async function fetchSprite(seg) {
 // ─── Motion events ────────────────────────────────────────────────────────
 async function loadMotionEvents() {
   try {
-    const resp = await fetch(`/recordings/motion/${CAM}?t=${Date.now()}`);
-    if (!resp.ok) return;
-    const events = await resp.json();
-    if (Array.isArray(events)) renderMotionBar(events);
+    const [evResp, stResp] = await Promise.all([
+      fetch(`/recordings/motion/${CAM}?t=${Date.now()}`),
+      fetch(`/recordings/motion-status/${CAM}?t=${Date.now()}`),
+    ]);
+    if (evResp.ok) {
+      const events = await evResp.json();
+      if (Array.isArray(events)) renderMotionBar(events);
+    }
+    if (stResp.ok) {
+      const status = await stResp.json();
+      if (status && typeof status === 'object') updateSegListStatus(status);
+    }
   } catch {}
 }
 

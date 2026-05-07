@@ -394,6 +394,37 @@ def get_motion_events(camera: str, since_iso: Optional[str] = None) -> list[dict
     return [dict(r) for r in rows]
 
 
+def get_motion_status(camera: str) -> dict[str, str]:
+    """
+    Return a dict of {segment_start: status} for all analyzed segments.
+
+    Status values:
+      'person'  – at least one person detected
+      'motion'  – motion detected, no person
+      'clear'   – analyzed, no motion found
+    """
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT
+            ma.segment_start,
+            CASE
+                WHEN SUM(CASE WHEN me.motion_type = 'person' THEN 1 ELSE 0 END) > 0 THEN 'person'
+                WHEN COUNT(me.id) > 0 THEN 'motion'
+                ELSE 'clear'
+            END AS status
+        FROM motion_analyzed ma
+        LEFT JOIN motion_events me
+               ON ma.camera = me.camera AND ma.segment_start = me.segment_start
+        WHERE ma.camera = ?
+        GROUP BY ma.segment_start
+        """,
+        (camera,),
+    ).fetchall()
+    conn.close()
+    return {r["segment_start"]: r["status"] for r in rows}
+
+
 def purge_old_motion_events(camera: str, since_iso: str) -> None:
     """Delete motion events for segments older than since_iso."""
     conn = get_db()

@@ -597,6 +597,19 @@ def create_app():
         events = get_motion_events(mtx_cam)
         return jsonify(events), 200, {"Cache-Control": "no-store"}
 
+    @app.route("/recordings/motion-status/<cam>")
+    @login_required
+    def recordings_motion_status(cam):
+        """Return per-segment motion analysis status dict."""
+        from db import get_motion_status, get_setting
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed:
+            return jsonify({"error": "invalid camera"}), 400
+        quality = get_setting("dvr_record_quality", "sd")
+        mtx_cam = cam if quality == "hd" else cam + "lo"
+        status = get_motion_status(mtx_cam)
+        return jsonify(status), 200, {"Cache-Control": "no-store"}
+
     @app.route("/cameras")
     @login_required
     def cameras():
