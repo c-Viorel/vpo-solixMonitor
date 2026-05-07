@@ -27,14 +27,12 @@ services:
     image: bluenviron/mediamtx:latest
     container_name: solix-mediamtx
     restart: unless-stopped
-    network_mode: host   # must reach cameras on LAN (192.168.50.x)
-    volumes:
-      - ./mediamtx.yml:/mediamtx.yml:ro
+    network_mode: host
     environment:
       - MTX_PATHS_CAMERA1_SOURCE=${CAMERA1_RTSP_URL:-}
       - MTX_PATHS_CAMERA2_SOURCE=${CAMERA2_RTSP_URL:-}
     profiles:
-      - cameras   # only starts when CAMERAS_ENABLED: docker compose --profile cameras up -d
+      - cameras
 
 volumes:
   solix-data:

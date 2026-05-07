@@ -1,46 +1,35 @@
 # MediaMTX configuration for Solix Monitor cameras
-# Pulls RTSP streams from TAPO cameras and re-serves as HLS for browser playback.
-#
-# Camera RTSP URLs for TAPO cameras:
-#   rtsp://username:password@192.168.50.XXX:554/stream1   (main stream, 1080p)
-#   rtsp://username:password@192.168.50.XXX:554/stream2   (sub stream, 360p)
-#
-# Credentials = your TAPO app username (email) + password
+# Pulls RTSP streams from TAPO cameras via Tailscale and re-serves as HLS.
 
 ###############################################################################
 # Network
 ###############################################################################
-hlsAddress: :8888          # HLS endpoint — proxied by Caddy at /hls/
-rtspAddress: :8554         # internal RTSP re-stream (not exposed externally)
+hlsAddress: :8888
+rtspAddress: :8554
 rtmpDisable: yes
 webrtcDisable: yes
-srtDisable: yes
+srt:
+  disable: yes
 
 ###############################################################################
 # HLS settings
 ###############################################################################
-hlsAlwaysRemux: no         # only transcode when a viewer is watching
-hlsSegmentDuration: 2s     # lower = lower latency
-hlsPartDuration: 200ms
-hlsSegmentMaxSize: 50MB
-hlsEncryption: no
-
-###############################################################################
-# Access control — all streams require these credentials
-###############################################################################
-authMethod: internal
-readUser: viewer
-# readPass is set via MTX_READPASS env var in .env
+hls:
+  alwaysRemux: no
+  segmentDuration: 2s
+  partDuration: 200ms
+  segmentMaxSize: 50MB
+  encryption: no
 
 ###############################################################################
 # Paths (camera streams)
-# Source URLs are injected via env vars: MTX_PATHS_CAMERA1_SOURCE etc.
+# Source URLs injected via env vars: MTX_PATHS_CAMERA1_SOURCE etc.
 ###############################################################################
 paths:
   camera1:
-    sourceOnDemand: yes      # connect to camera only when someone is watching
+    sourceOnDemand: yes
     sourceOnDemandStartTimeout: 10s
-    sourceOnDemandCloseAfter: 60s  # disconnect if no viewers for 60s
+    sourceOnDemandCloseAfter: 60s
   camera2:
     sourceOnDemand: yes
     sourceOnDemandStartTimeout: 10s
