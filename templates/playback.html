@@ -211,11 +211,20 @@
       <span style="color:#475569; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">Timeline</span>
       <span id="seg-count" style="color:#334155; font-size:0.72rem;"></span>
     </div>
-    <div style="display:flex; align-items:center; gap:8px; font-size:0.72rem; color:#334155;">
-      <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.55); border-radius:2px;"></span> înregistrat
-      <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.8); border-radius:2px; margin-left:6px; box-shadow:inset 2px 0 0 #818cf8;"></span> redare curentă
-      <span style="display:inline-block; width:10px; height:7px; background:rgba(234,179,8,0.65); border-radius:1px; margin-left:6px;"></span> mișcare
-      <span style="display:inline-block; width:10px; height:7px; background:rgba(239,68,68,0.75); border-radius:1px; margin-left:4px;"></span> persoană
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="display:flex; align-items:center; gap:8px; font-size:0.72rem; color:#334155;">
+        <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.55); border-radius:2px;"></span> înregistrat
+        <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.8); border-radius:2px; margin-left:6px; box-shadow:inset 2px 0 0 #818cf8;"></span> redare curentă
+        <span style="display:inline-block; width:10px; height:7px; background:rgba(234,179,8,0.65); border-radius:1px; margin-left:6px;"></span> mișcare
+        <span style="display:inline-block; width:10px; height:7px; background:rgba(239,68,68,0.75); border-radius:1px; margin-left:4px;"></span> persoană
+      </div>
+      <button id="analyze-btn" onclick="triggerAnalysis()"
+        style="padding:4px 12px; font-size:0.72rem; font-weight:600; border-radius:6px;
+               border:1px solid #1e3a5f; background:#0d1a2d; color:#64748b; cursor:pointer;
+               display:flex; align-items:center; gap:6px; transition:border-color 0.15s, color 0.15s;">
+        <span id="analyze-icon">🔍</span>
+        <span id="analyze-label">Analizează</span>
+      </button>
     </div>
   </div>
 
@@ -604,6 +613,64 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh segment list every 5 minutes
   setInterval(loadSegments, 5 * 60 * 1000);
 });
+
+// ─── Manual analysis trigger ──────────────────────────────────────────────
+let _analysisPoll = null;
+
+async function triggerAnalysis() {
+  const btn   = document.getElementById('analyze-btn');
+  const label = document.getElementById('analyze-label');
+  const icon  = document.getElementById('analyze-icon');
+
+  btn.disabled = true;
+  btn.style.borderColor = '#2563eb';
+  btn.style.color = '#60a5fa';
+  icon.textContent = '⏳';
+  label.textContent = 'Analizează…';
+
+  try {
+    const resp = await fetch(`/recordings/analyze/${CAM}`, { method: 'POST' });
+    const data = await resp.json();
+    if (data.status === 'already_running' || data.status === 'started') {
+      pollAnalysisStatus();
+    }
+  } catch {
+    resetAnalyzeBtn();
+  }
+}
+
+function pollAnalysisStatus() {
+  if (_analysisPoll) clearInterval(_analysisPoll);
+  _analysisPoll = setInterval(async () => {
+    try {
+      const resp = await fetch(`/recordings/analyze-status/${CAM}`);
+      const data = await resp.json();
+      if (!data.running) {
+        clearInterval(_analysisPoll);
+        _analysisPoll = null;
+        resetAnalyzeBtn();
+        // Refresh motion data
+        loadMotionEvents();
+      }
+    } catch {
+      clearInterval(_analysisPoll);
+      _analysisPoll = null;
+      resetAnalyzeBtn();
+    }
+  }, 3000);
+}
+
+function resetAnalyzeBtn() {
+  const btn   = document.getElementById('analyze-btn');
+  const label = document.getElementById('analyze-label');
+  const icon  = document.getElementById('analyze-icon');
+  btn.disabled = false;
+  btn.style.borderColor = '#1e3a5f';
+  btn.style.color = '#64748b';
+  icon.textContent = '✓';
+  label.textContent = 'Gata';
+  setTimeout(() => { icon.textContent = '🔍'; label.textContent = 'Analizează'; }, 3000);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 function formatTime(ts) {
