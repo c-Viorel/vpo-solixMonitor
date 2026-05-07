@@ -165,7 +165,7 @@ let timeRange = { start: null, end: null };
 async function loadSegments() {
   document.getElementById('seg-count').textContent = 'Încarcă…';
   try {
-    const resp = await fetch(`/recordings/list/${CAM}`);
+    const resp = await fetch(`/recordings/list/${CAM}?t=${Date.now()}`);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     segments = await resp.json();
     if (segments.error) throw new Error(segments.error);
@@ -249,22 +249,42 @@ function playSeg(seg, seekToTs) {
   spinner.style.display = 'block';
   overlayMsg.textContent = 'Încarcă segmentul…';
 
-  video.src = seg.proxy_url;
-  video.load();
-  video.addEventListener('canplay', function onReady() {
-    video.removeEventListener('canplay', onReady);
-    if (seekOffset > 1) {
-      video.currentTime = seekOffset;
-    }
+  const hideOverlay = () => {
     overlay.style.display = 'none';
     spinner.style.display = 'none';
-    video.play().catch(() => {});
-    // Update playing info — show actual seek time, not segment start
     const displayTs = seekToTs || new Date(seg.start).getTime();
     document.getElementById('playing-info').hidden = false;
     document.getElementById('playing-time').textContent = formatDateTime(displayTs);
     document.getElementById('playing-dur').textContent = Math.round(seg.duration) + 's total';
+  };
+
+  video.preload = 'metadata';
+  video.src = seg.proxy_url;
+  video.load();
+
+  video.addEventListener('loadedmetadata', function onMeta() {
+    video.removeEventListener('loadedmetadata', onMeta);
+    if (seekOffset > 0.5) {
+      video.currentTime = seekOffset;
+      // Wait for seek to complete before playing
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        hideOverlay();
+        video.play().catch(() => {});
+      };
+      video.addEventListener('seeked', onSeeked);
+      // Fallback: if seeked doesn't fire in 3s, play anyway
+      setTimeout(() => {
+        video.removeEventListener('seeked', onSeeked);
+        hideOverlay();
+        video.play().catch(() => {});
+      }, 3000);
+    } else {
+      hideOverlay();
+      video.play().catch(() => {});
+    }
   }, { once: true });
+
   video.addEventListener('error', function onErr() {
     video.removeEventListener('error', onErr);
     spinner.style.display = 'none';

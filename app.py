@@ -501,7 +501,7 @@ def create_app():
                 "sprite_url": f"/recordings/sprite/{cam}/{e['start_iso'][:19].replace(':', '-')}",
             }
             segments.append(seg)
-        return jsonify(segments)
+        return jsonify(segments), 200, {"Cache-Control": "no-store"}
 
     @app.route("/recordings/get/<cam>")
     @login_required
