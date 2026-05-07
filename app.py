@@ -454,6 +454,18 @@ def create_app():
             dvr_quality=dvr_quality,
         )
 
+    def _resolve_mtx_cam(cam: str) -> str:
+        """Return the actual mediamtx camera directory name, falling back to SD if HD doesn't exist."""
+        import os as _os
+        from db import get_setting
+        quality = get_setting("dvr_record_quality", "sd")
+        recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
+        if quality == "hd":
+            hd_dir = _os.path.join(recordings_dir, cam)
+            if _os.path.isdir(hd_dir):
+                return cam
+        return cam + "lo"
+
     @app.route("/recordings/list/<cam>")
     @login_required
     def recordings_list(cam):
@@ -463,15 +475,9 @@ def create_app():
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        from db import get_setting
-        quality = get_setting("dvr_record_quality", "sd")
-        mtx_cam = cam if quality == "hd" else cam + "lo"
+        mtx_cam = _resolve_mtx_cam(cam)
         recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
         cam_dir = _os.path.join(recordings_dir, mtx_cam)
-        # Fallback to SD directory if HD directory doesn't exist yet
-        if not _os.path.isdir(cam_dir):
-            mtx_cam = cam + "lo"
-            cam_dir = _os.path.join(recordings_dir, mtx_cam)
         if not _os.path.isdir(cam_dir):
             return jsonify([])
 
@@ -588,12 +594,11 @@ def create_app():
     @login_required
     def recordings_motion(cam):
         """Return motion detection events for the last 24 h of recordings."""
-        from db import get_motion_events, get_setting
+        from db import get_motion_events
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        quality = get_setting("dvr_record_quality", "sd")
-        mtx_cam = cam if quality == "hd" else cam + "lo"
+        mtx_cam = _resolve_mtx_cam(cam)
         events = get_motion_events(mtx_cam)
         return jsonify(events), 200, {"Cache-Control": "no-store"}
 
@@ -601,12 +606,11 @@ def create_app():
     @login_required
     def recordings_motion_status(cam):
         """Return per-segment motion analysis status dict."""
-        from db import get_motion_status, get_setting
+        from db import get_motion_status
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        quality = get_setting("dvr_record_quality", "sd")
-        mtx_cam = cam if quality == "hd" else cam + "lo"
+        mtx_cam = _resolve_mtx_cam(cam)
         status = get_motion_status(mtx_cam)
         return jsonify(status), 200, {"Cache-Control": "no-store"}
 
@@ -621,8 +625,7 @@ def create_app():
             return jsonify({"error": "invalid camera"}), 400
         if get_setting(f"analysis_running_{cam}") == "1":
             return jsonify({"status": "already_running"}), 200
-        quality = get_setting("dvr_record_quality", "sd")
-        mtx_cam = cam if quality == "hd" else cam + "lo"
+        mtx_cam = _resolve_mtx_cam(cam)
 
         def run():
             set_setting(f"analysis_running_{cam}", "1")
