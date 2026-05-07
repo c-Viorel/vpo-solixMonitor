@@ -216,9 +216,11 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
 
   if (Hls.isSupported()) {
     const hls = new Hls({
-      lowLatencyMode: true,
-      maxBufferLength: 4,
-      xhrSetup: function(xhr) { xhr.withCredentials = true; }
+      lowLatencyMode: false,
+      enableWorker: false,
+      maxBufferLength: 8,
+      manifestLoadingTimeOut: 10000,
+      manifestLoadingMaxRetry: 3,
     });
     hls.loadSource(url);
     hls.attachMedia(video);
@@ -228,7 +230,7 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
       console.error('[HLS]', data.type, data.details, data.response);
       if (data.fatal) {
         setError('Camera offline or stream unavailable');
-        setTimeout(() => { hls.loadSource(url); hls.startLoad(); }, 10000);
+        setTimeout(() => { hls.destroy(); initPlayer(videoId, overlayId, statusId, dotId, cam); }, 15000);
       }
     });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
