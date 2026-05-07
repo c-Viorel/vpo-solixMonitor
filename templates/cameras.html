@@ -215,12 +215,17 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
   }
 
   if (Hls.isSupported()) {
-    const hls = new Hls({ lowLatencyMode: true, maxBufferLength: 4 });
+    const hls = new Hls({
+      lowLatencyMode: true,
+      maxBufferLength: 4,
+      xhrSetup: function(xhr) { xhr.withCredentials = true; }
+    });
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
     hls.on(Hls.Events.LEVEL_LOADED, setLive);
     hls.on(Hls.Events.ERROR, (_, data) => {
+      console.error('[HLS]', data.type, data.details, data.response);
       if (data.fatal) {
         setError('Camera offline or stream unavailable');
         setTimeout(() => { hls.loadSource(url); hls.startLoad(); }, 10000);
