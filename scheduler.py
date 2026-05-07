@@ -143,13 +143,17 @@ def _purge_job(app) -> None:
 
 
 def _thumbgen_job(app) -> None:
-    """Generate thumbnail sprites for new recording segments (runs every 5 min)."""
+    """Generate thumbnail sprites for new recording segments and clean up old ones (runs every 5 min)."""
     cameras_enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
     if not cameras_enabled:
         return
     try:
-        from thumbnail_gen import run_all
+        from thumbnail_gen import run_all, cleanup_old_segments
         run_all()
+        with app.app_context():
+            from db import get_setting
+            retention_hours = int(get_setting("dvr_retention_hours", "24"))
+        cleanup_old_segments(retention_hours)
     except Exception as exc:
         logger.error("Thumbnail generation failed: %s", exc)
 

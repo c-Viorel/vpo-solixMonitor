@@ -187,6 +187,81 @@
     </form>
   </div>
 
+  <!-- ── DVR Recording ── -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="flex items-center justify-between mb-4">
+      <h2 style="color:#f1f5f9;font-size:0.95rem;font-weight:600;">DVR Recording</h2>
+      <span id="dvr-storage-badge" style="font-size:0.78rem;color:#64748b;">Loading storage…</span>
+    </div>
+
+    <!-- Storage bar -->
+    <div class="mb-5">
+      <div style="display:flex;justify-content:space-between;margin-bottom:0.4rem;">
+        <span style="color:#64748b;font-size:0.8rem;">Storage used</span>
+        <span id="dvr-total-size" style="color:#e2e8f0;font-size:0.8rem;font-weight:500;">—</span>
+      </div>
+      <div style="display:flex;gap:0.75rem;" class="mb-2">
+        <div style="flex:1;background:#0a1526;border-radius:6px;padding:0.5rem 0.75rem;border:1px solid #1e3050;">
+          <div style="color:#64748b;font-size:0.72rem;margin-bottom:0.15rem;">Camera 1 (SD)</div>
+          <div id="dvr-cam1-size" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;">—</div>
+          <div id="dvr-cam1-segs" style="color:#475569;font-size:0.72rem;">— segmente</div>
+        </div>
+        <div style="flex:1;background:#0a1526;border-radius:6px;padding:0.5rem 0.75rem;border:1px solid #1e3050;">
+          <div style="color:#64748b;font-size:0.72rem;margin-bottom:0.15rem;">Camera 2 (SD)</div>
+          <div id="dvr-cam2-size" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;">—</div>
+          <div id="dvr-cam2-segs" style="color:#475569;font-size:0.72rem;">— segmente</div>
+        </div>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin_dvr_settings') }}">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+        <!-- Retention -->
+        <div>
+          <label class="form-label">Perioadă de retenție</label>
+          <select name="dvr_retention" class="form-input" style="cursor:pointer;">
+            {% for h in [12, 24, 48, 72] %}
+              <option value="{{ h }}" {% if dvr_retention == h|string %}selected{% endif %}>
+                {{ h }}h
+                {% if h == 24 %} — recomandat{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <p style="color:#475569;font-size:0.73rem;margin-top:0.3rem;">Segmentele mai vechi sunt șterse automat de scheduler.</p>
+        </div>
+
+        <!-- Quality -->
+        <div>
+          <label class="form-label">Calitate înregistrare</label>
+          <select name="dvr_quality" id="dvr-quality-sel" class="form-input" style="cursor:pointer;" onchange="updateDvrCmd()">
+            <option value="sd" {% if dvr_quality == 'sd' %}selected{% endif %}>SD – 640×360 (~16 MB / 5 min)</option>
+            <option value="hd" {% if dvr_quality == 'hd' %}selected{% endif %}>HD – 1080p (~160 MB / 5 min)</option>
+          </select>
+          <p style="color:#475569;font-size:0.73rem;margin-top:0.3rem;">Modificarea calității necesită restart MediaMTX.</p>
+        </div>
+      </div>
+
+      <!-- MediaMTX restart notice (shown when quality != current) -->
+      <div id="dvr-cmd-box" style="display:none;margin-top:1rem;background:#080e1c;border:1px solid rgba(99,102,241,0.3);border-radius:0.5rem;padding:0.75rem 1rem;">
+        <p style="color:#a5b4fc;font-size:0.78rem;font-weight:600;margin-bottom:0.4rem;">
+          ⚠️ Comandă docker pentru calitatea selectată (rulează pe NAS după salvare):
+        </p>
+        <pre id="dvr-cmd-text" style="color:#94a3b8;font-size:0.72rem;white-space:pre-wrap;word-break:break-all;line-height:1.5;margin:0;"></pre>
+        <button type="button" onclick="copyDvrCmd()" style="margin-top:0.5rem;padding:0.3rem 0.75rem;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);border-radius:4px;font-size:0.75rem;cursor:pointer;">
+          Copiază comanda
+        </button>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn-primary">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+          Salvează setări DVR
+        </button>
+      </div>
+    </form>
+  </div>
+
   <!-- ── Danger zone ── -->
   <div class="card" style="border-color:rgba(239,68,68,0.2);">
     <h2 style="color:#f87171;font-size:0.95rem;font-weight:600;" class="mb-1">Danger Zone</h2>
@@ -217,6 +292,81 @@
 }
 </style>
 <script>
+// ── DVR storage info ────────────────────────────────────────────────────
+(async function loadDvrStorage() {
+  try {
+    const r = await fetch('/api/dvr-storage');
+    const d = await r.json();
+    const c1 = d.cameras['camera1lo'] || {};
+    const c2 = d.cameras['camera2lo'] || {};
+    document.getElementById('dvr-cam1-size').textContent = c1.mb + ' MB';
+    document.getElementById('dvr-cam1-segs').textContent = c1.segments + ' segmente';
+    document.getElementById('dvr-cam2-size').textContent = c2.mb + ' MB';
+    document.getElementById('dvr-cam2-segs').textContent = c2.segments + ' segmente';
+    const gb = d.total_gb;
+    const total = gb >= 1 ? gb + ' GB' : d.total_mb + ' MB';
+    document.getElementById('dvr-total-size').textContent = total;
+    document.getElementById('dvr-storage-badge').textContent = 'Total: ' + total;
+  } catch(e) {
+    document.getElementById('dvr-storage-badge').textContent = 'Storage N/A';
+  }
+})();
+
+// ── DVR command generator ────────────────────────────────────────────────
+const DVR_CMD = {
+  sd: `docker stop solix-mediamtx; docker rm solix-mediamtx; docker run -d --name solix-mediamtx \\
+  --network host --restart unless-stopped \\
+  -v /volume2/docker/solix-monitor/recordings:/recordings \\
+  -e MTX_PLAYBACK='yes' \\
+  -e MTX_PATHDEFAULTS_RECORDFORMAT='fmp4' \\
+  -e MTX_PATHDEFAULTS_RECORDPATH='/recordings/%path/%Y-%m-%d_%H-%M-%S-%f' \\
+  -e MTX_PATHDEFAULTS_RECORDSEGMENTDURATION='5m' \\
+  -e MTX_PATHDEFAULTS_RECORDDELETEAFTER='24h' \\
+  -e MTX_PATHS_CAMERA1_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.191:554/stream1' \\
+  -e MTX_PATHS_CAMERA2_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.185:554/stream1' \\
+  -e MTX_PATHS_CAMERA1LO_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.191:554/stream2' \\
+  -e MTX_PATHS_CAMERA1LO_RECORD='yes' \\
+  -e MTX_PATHS_CAMERA2LO_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.185:554/stream2' \\
+  -e MTX_PATHS_CAMERA2LO_RECORD='yes' \\
+  bluenviron/mediamtx:latest`,
+  hd: `docker stop solix-mediamtx; docker rm solix-mediamtx; docker run -d --name solix-mediamtx \\
+  --network host --restart unless-stopped \\
+  -v /volume2/docker/solix-monitor/recordings:/recordings \\
+  -e MTX_PLAYBACK='yes' \\
+  -e MTX_PATHDEFAULTS_RECORDFORMAT='fmp4' \\
+  -e MTX_PATHDEFAULTS_RECORDPATH='/recordings/%path/%Y-%m-%d_%H-%M-%S-%f' \\
+  -e MTX_PATHDEFAULTS_RECORDSEGMENTDURATION='5m' \\
+  -e MTX_PATHDEFAULTS_RECORDDELETEAFTER='24h' \\
+  -e MTX_PATHS_CAMERA1_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.191:554/stream1' \\
+  -e MTX_PATHS_CAMERA1_RECORD='yes' \\
+  -e MTX_PATHS_CAMERA2_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.185:554/stream1' \\
+  -e MTX_PATHS_CAMERA2_RECORD='yes' \\
+  -e MTX_PATHS_CAMERA1LO_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.191:554/stream2' \\
+  -e MTX_PATHS_CAMERA2LO_SOURCE='rtsp://Viorel:Viorel12%40%23@192.168.1.185:554/stream2' \\
+  bluenviron/mediamtx:latest`,
+};
+const CURRENT_QUALITY = '{{ dvr_quality }}';
+
+function updateDvrCmd() {
+  const sel = document.getElementById('dvr-quality-sel').value;
+  const box = document.getElementById('dvr-cmd-box');
+  if (sel !== CURRENT_QUALITY) {
+    document.getElementById('dvr-cmd-text').textContent = DVR_CMD[sel] || '';
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function copyDvrCmd() {
+  const text = document.getElementById('dvr-cmd-text').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Copiat!';
+    setTimeout(() => btn.textContent = 'Copiază comanda', 2000);
+  });
+}
+
 // ── Password visibility toggle ──────────────────────────────────────────
 function togglePw() {
   const inp = document.getElementById('f-password');

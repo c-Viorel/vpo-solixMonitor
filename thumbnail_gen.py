@@ -128,6 +128,33 @@ def generate_pending_sprites(cam: str) -> int:
     return generated
 
 
+def cleanup_old_segments(retention_hours: int) -> int:
+    """Delete recording segments (and their sprites) older than retention_hours. Returns count deleted."""
+    import time
+    cutoff = time.time() - retention_hours * 3600
+    deleted = 0
+    rec_dir = Path(RECORDINGS_DIR)
+    if not rec_dir.exists():
+        return 0
+    for cam_dir in rec_dir.iterdir():
+        if not cam_dir.is_dir():
+            continue
+        for mp4 in cam_dir.glob("*.mp4"):
+            try:
+                if mp4.stat().st_mtime < cutoff:
+                    mp4.unlink()
+                    deleted += 1
+                    for ext in (".sprite.jpg", ".sprite.json"):
+                        companion = mp4.with_name(mp4.stem + ext)
+                        if companion.exists():
+                            companion.unlink()
+            except OSError:
+                pass
+    if deleted:
+        logger.info("Cleanup: deleted %d old recording segments (retention=%dh)", deleted, retention_hours)
+    return deleted
+
+
 def run_all():
     """Generate sprites for both cameras."""
     for cam in ("camera1lo", "camera2lo"):

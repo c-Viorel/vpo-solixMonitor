@@ -13,6 +13,8 @@ POST /login             → authenticate admin
 GET  /logout            → clear session
 GET  /admin             → admin panel (requires login)
 POST /admin/save-credentials  → save Anker credentials
+POST /admin/dvr-settings      → save DVR recording quality + retention
+GET  /api/dvr-storage         → DVR disk usage per camera
 POST /admin/save-password     → change admin password
 POST /admin/trigger-collect   → run collection now
 
@@ -211,12 +213,17 @@ def create_app():
         from db import get_latest_reading
         last_reading = get_latest_reading()
 
+        dvr_retention = get_setting("dvr_retention_hours", "24")
+        dvr_quality   = get_setting("dvr_record_quality", "sd")
+
         return render_template(
             "admin.html",
             display_email=display_email,
             country=country,
             poll_interval=poll_interval,
             last_reading=last_reading,
+            dvr_retention=dvr_retention,
+            dvr_quality=dvr_quality,
         )
 
     @app.route("/admin/save-credentials", methods=["POST"])
@@ -307,6 +314,51 @@ def create_app():
         conn.close()
         flash("All historical data cleared.", "success")
         return redirect(url_for("admin"))
+
+    @app.route("/admin/dvr-settings", methods=["POST"])
+    @login_required
+    def admin_dvr_settings():
+        from db import set_setting
+        retention = request.form.get("dvr_retention", "24")
+        quality   = request.form.get("dvr_quality", "sd")
+        if retention not in ("12", "24", "48", "72"):
+            retention = "24"
+        if quality not in ("sd", "hd"):
+            quality = "sd"
+        set_setting("dvr_retention_hours", retention)
+        set_setting("dvr_record_quality", quality)
+        flash("DVR settings saved.", "success")
+        return redirect(url_for("admin"))
+
+    @app.route("/api/dvr-storage")
+    @login_required
+    def api_dvr_storage():
+        import os as _os
+        recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
+        cameras = ["camera1lo", "camera2lo"]
+        result = {"cameras": {}, "total_bytes": 0, "total_mb": 0}
+        for cam in cameras:
+            cam_path = _os.path.join(recordings_dir, cam)
+            size_bytes = 0
+            file_count = 0
+            if _os.path.isdir(cam_path):
+                for fname in _os.listdir(cam_path):
+                    fpath = _os.path.join(cam_path, fname)
+                    try:
+                        size_bytes += _os.path.getsize(fpath)
+                        if fname.endswith(".mp4"):
+                            file_count += 1
+                    except OSError:
+                        pass
+            result["cameras"][cam] = {
+                "bytes": size_bytes,
+                "mb": round(size_bytes / 1_048_576, 1),
+                "segments": file_count,
+            }
+            result["total_bytes"] += size_bytes
+        result["total_mb"] = round(result["total_bytes"] / 1_048_576, 1)
+        result["total_gb"] = round(result["total_bytes"] / 1_073_741_824, 2)
+        return jsonify(result)
 
     @app.route("/api/test-credentials", methods=["POST"])
     @login_required
