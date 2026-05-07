@@ -461,47 +461,44 @@ def create_app():
     @login_required
     def recordings_sprite(cam, ts):
         """Serve pre-generated thumbnail sprite for a recording segment."""
-        import re
+        import re, glob as _glob, json as _json
         from flask import send_file
         allowed = {"camera1", "camera2"}
         if cam not in allowed or not re.match(r'^[\d\-_T:Z]+$', ts):
             return jsonify({"error": "invalid"}), 400
         recordings_dir = os.environ.get("RECORDINGS_DIR", "/recordings")
         mtx_cam = cam + "lo"
-        # ts format: 2026-05-07T21-18-41 → find matching sprite
         cam_dir = os.path.join(recordings_dir, mtx_cam)
         if not os.path.isdir(cam_dir):
             return jsonify({"error": "no recordings"}), 404
-        # Find sprite file matching timestamp prefix
-        ts_normalized = ts.replace("T", "_").replace(":", "-")
-        sprite = os.path.join(cam_dir, ts_normalized + ".sprite.jpg")
-        meta = os.path.join(cam_dir, ts_normalized + ".sprite.json")
-        if not os.path.exists(sprite):
+        # ts: "2026-05-07T21-18-41" → normalize and glob (microseconds in filename)
+        ts_norm = ts.replace("T", "_").replace(":", "-")
+        matches = sorted(_glob.glob(os.path.join(cam_dir, ts_norm + "*.sprite.jpg")))
+        if not matches:
             return jsonify({"error": "sprite not ready"}), 404
-        # Return sprite + meta in headers
-        import json as _json
+        sprite = matches[0]
+        meta = sprite.replace(".sprite.jpg", ".sprite.json")
         resp = send_file(sprite, mimetype="image/jpeg")
         if os.path.exists(meta):
             with open(meta) as f:
-                m = _json.load(f)
-            resp.headers["X-Sprite-Meta"] = _json.dumps(m)
+                resp.headers["X-Sprite-Meta"] = _json.dumps(_json.load(f))
         return resp
 
     @app.route("/recordings/sprite-meta/<cam>/<ts>")
     @login_required
     def recordings_sprite_meta(cam, ts):
         """Return sprite metadata JSON."""
-        import re, json as _json
+        import re, json as _json, glob as _glob
         allowed = {"camera1", "camera2"}
         if cam not in allowed or not re.match(r'^[\d\-_T:Z]+$', ts):
             return jsonify({"error": "invalid"}), 400
         recordings_dir = os.environ.get("RECORDINGS_DIR", "/recordings")
         mtx_cam = cam + "lo"
-        ts_normalized = ts.replace("T", "_").replace(":", "-")
-        meta = os.path.join(recordings_dir, mtx_cam, ts_normalized + ".sprite.json")
-        if not os.path.exists(meta):
+        ts_norm = ts.replace("T", "_").replace(":", "-")
+        matches = sorted(_glob.glob(os.path.join(recordings_dir, mtx_cam, ts_norm + "*.sprite.json")))
+        if not matches:
             return jsonify({"error": "not ready"}), 404
-        with open(meta) as f:
+        with open(matches[0]) as f:
             return jsonify(_json.load(f))
 
     @app.route("/cameras")

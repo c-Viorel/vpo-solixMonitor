@@ -57,7 +57,7 @@
   display: none;
   z-index: 100;
 }
-#thumb-preview img { display: block; width: 160px; height: 90px; object-fit: cover; border-radius: 4px; }
+#thumb-preview img { display: block; width: 160px; height: 90px; border-radius: 4px; }
 #thumb-preview span { display: block; text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 3px; }
 #time-label {
   font-size: 0.72rem;
@@ -335,23 +335,26 @@ function showThumb(e) {
   const thumbIdx = Math.min(Math.floor(segOffset / sp.meta.interval), sp.meta.count - 1);
   const col = thumbIdx % sp.meta.cols;
   const row = Math.floor(thumbIdx / sp.meta.cols);
-  const bgX = -col * sp.meta.width;
-  const bgY = -row * sp.meta.height;
+  const bgX = col * sp.meta.width;
+  const bgY = row * sp.meta.height;
 
+  // Use CSS background-image for instant, flicker-free thumbnail crop
   const img = document.getElementById('thumb-img');
-  img.src = sp.img;
-  img.style.objectPosition = `${bgX}px ${bgY}px`;
-  img.style.objectFit = 'none';
-  img.style.width = sp.meta.width + 'px';
-  img.style.height = sp.meta.height + 'px';
-  img.style.marginLeft = '0';
-  // Use background trick for better performance
-  img.style.display = 'none';
-  img.style.display = 'block';
+  img.style.cssText = `
+    width: ${sp.meta.width}px;
+    height: ${sp.meta.height}px;
+    background: url('${sp.img}') -${bgX}px -${bgY}px;
+    background-size: ${sp.meta.sprite_w}px ${sp.meta.sprite_h}px;
+    display: block;
+  `;
+  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // blank placeholder
 
-  // Position preview
-  const leftPct = pct * 100;
-  preview.style.left = `${pct * 100}%`;
+  // Position preview (clamp to viewport)
+  const barRect = document.getElementById('timeline-bar').getBoundingClientRect();
+  const previewW = sp.meta.width + 6;
+  const rawLeft = pct * barRect.width;
+  const clampedLeft = Math.max(previewW / 2, Math.min(rawLeft, barRect.width - previewW / 2));
+  preview.style.left = clampedLeft + 'px';
   preview.style.display = 'block';
 
   // Update time label
