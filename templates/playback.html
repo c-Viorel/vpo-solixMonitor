@@ -74,8 +74,13 @@
     <h1 style="color:#f1f5f9; font-size:1.4rem; font-weight:700;">📼 Playback</h1>
     <p style="color:#64748b; font-size:0.8rem;" class="mt-1">
       Ultimele 24h · 5 minute / segment ·
+      {% if dvr_quality == 'hd' %}
+      <span style="background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); border-radius:4px; padding:1px 6px; font-size:0.72rem; font-weight:600;">HD 1080p</span>
+      <span style="color:#475569; font-size:0.72rem;"> · ~160MB/5min</span>
+      {% else %}
       <span style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:4px; padding:1px 6px; font-size:0.72rem; font-weight:600;">SD 640p</span>
       <span style="color:#475569; font-size:0.72rem;"> · economie spațiu (~16MB/5min)</span>
+      {% endif %}
     </p>
   </div>
   <!-- Camera selector -->

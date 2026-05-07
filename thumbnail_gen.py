@@ -156,8 +156,16 @@ def cleanup_old_segments(retention_hours: int) -> int:
 
 
 def run_all():
-    """Generate sprites for both cameras."""
-    for cam in ("camera1lo", "camera2lo"):
+    """Generate sprites for both cameras based on current quality setting."""
+    try:
+        import sys, os as _os
+        sys.path.insert(0, _os.path.dirname(__file__))
+        from db import get_setting
+        quality = get_setting("dvr_record_quality", "sd")
+    except Exception:
+        quality = "sd"
+    cameras = ("camera1", "camera2") if quality == "hd" else ("camera1lo", "camera2lo")
+    for cam in cameras:
         n = generate_pending_sprites(cam)
         if n:
             logger.info("Generated %d sprites for %s", n, cam)

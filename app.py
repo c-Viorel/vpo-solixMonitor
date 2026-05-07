@@ -443,12 +443,15 @@ def create_app():
         enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
         cam1_name = os.environ.get("CAMERA1_NAME", "Camera 1")
         cam2_name = os.environ.get("CAMERA2_NAME", "Camera 2")
+        from db import get_setting
+        dvr_quality = get_setting("dvr_record_quality", "sd")
         return render_template(
             "playback.html",
             cameras_enabled=enabled,
             cam=cam,
             cam1_name=cam1_name,
             cam2_name=cam2_name,
+            dvr_quality=dvr_quality,
         )
 
     @app.route("/recordings/list/<cam>")
@@ -460,9 +463,15 @@ def create_app():
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
-        mtx_cam = cam + "lo"
+        from db import get_setting
+        quality = get_setting("dvr_record_quality", "sd")
+        mtx_cam = cam if quality == "hd" else cam + "lo"
         recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
         cam_dir = _os.path.join(recordings_dir, mtx_cam)
+        # Fallback to SD directory if HD directory doesn't exist yet
+        if not _os.path.isdir(cam_dir):
+            mtx_cam = cam + "lo"
+            cam_dir = _os.path.join(recordings_dir, mtx_cam)
         if not _os.path.isdir(cam_dir):
             return jsonify([])
 
@@ -515,9 +524,14 @@ def create_app():
         fname = request.args.get("file", "")
         if not re.match(r'^[\d_\-]+\.mp4$', fname):
             return jsonify({"error": "invalid filename"}), 400
-        mtx_cam = cam + "lo"
+        from db import get_setting
+        quality = get_setting("dvr_record_quality", "sd")
+        mtx_cam = cam if quality == "hd" else cam + "lo"
         recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
         fpath = _os.path.join(recordings_dir, mtx_cam, fname)
+        # Fallback to SD directory
+        if not _os.path.isfile(fpath):
+            fpath = _os.path.join(recordings_dir, cam + "lo", fname)
         if not _os.path.isfile(fpath):
             return jsonify({"error": "not found"}), 404
         return send_file(fpath, mimetype="video/mp4", conditional=True)
@@ -532,8 +546,12 @@ def create_app():
         if cam not in allowed or not re.match(r'^[\d\-_T:Z]+$', ts):
             return jsonify({"error": "invalid"}), 400
         recordings_dir = os.environ.get("RECORDINGS_DIR", "/recordings")
-        mtx_cam = cam + "lo"
+        from db import get_setting as _get_setting
+        quality = _get_setting("dvr_record_quality", "sd")
+        mtx_cam = cam if quality == "hd" else cam + "lo"
         cam_dir = os.path.join(recordings_dir, mtx_cam)
+        if not os.path.isdir(cam_dir):
+            cam_dir = os.path.join(recordings_dir, cam + "lo")
         if not os.path.isdir(cam_dir):
             return jsonify({"error": "no recordings"}), 404
         # ts: "2026-05-07T21-18-41" → normalize and glob (microseconds in filename)
