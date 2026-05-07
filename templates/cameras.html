@@ -121,6 +121,22 @@ sudo docker compose restart solix-monitor</pre>
 </div>
 
 {% else %}
+<!-- Quality selector -->
+<div class="flex items-center gap-3 mb-5">
+  <span style="color:#64748b; font-size:0.8rem; font-weight:500;">Quality:</span>
+  <div style="display:flex; gap:6px;">
+    <button id="btn-hd" onclick="setQuality('hd')"
+      style="padding:4px 14px; border-radius:20px; font-size:0.78rem; font-weight:600; border:1.5px solid #22c55e; background:#22c55e22; color:#22c55e; cursor:pointer;">
+      HD
+    </button>
+    <button id="btn-sd" onclick="setQuality('sd')"
+      style="padding:4px 14px; border-radius:20px; font-size:0.78rem; font-weight:600; border:1.5px solid #334155; background:transparent; color:#64748b; cursor:pointer;">
+      SD · 640p
+    </button>
+  </div>
+  <span style="color:#475569; font-size:0.75rem;" id="quality-label">High quality · 2304p / 1920p</span>
+</div>
+
 <!-- Camera grid -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -186,9 +202,35 @@ sudo docker compose restart solix-monitor</pre>
 <script>
 const HLS_PASS = {{ hls_pass | tojson }};
 
-function buildHlsUrl(cam) {
+let currentQuality = 'hd';
+const players = {};
+
+function buildHlsUrl(cam, quality) {
   const base = window.location.origin;
-  return `${base}/hls/${cam}/index.m3u8`;
+  const path = quality === 'sd' ? `${cam}lo` : cam;
+  return `${base}/hls/${path}/index.m3u8`;
+}
+
+function setQuality(q) {
+  if (q === currentQuality) return;
+  currentQuality = q;
+
+  const isHd = q === 'hd';
+  document.getElementById('btn-hd').style.borderColor = isHd ? '#22c55e' : '#334155';
+  document.getElementById('btn-hd').style.background  = isHd ? '#22c55e22' : 'transparent';
+  document.getElementById('btn-hd').style.color       = isHd ? '#22c55e' : '#64748b';
+  document.getElementById('btn-sd').style.borderColor = isHd ? '#334155' : '#f59e0b';
+  document.getElementById('btn-sd').style.background  = isHd ? 'transparent' : '#f59e0b22';
+  document.getElementById('btn-sd').style.color       = isHd ? '#64748b' : '#f59e0b';
+  document.getElementById('quality-label').textContent = isHd
+    ? 'High quality · 2304p / 1920p'
+    : 'Low quality · 640p — better for slow connections';
+
+  Object.entries(players).forEach(([key, p]) => {
+    const [, , , , cam] = p.args;
+    p.hls && p.hls.destroy();
+    initPlayer(...p.args);
+  });
 }
 
 function initPlayer(videoId, overlayId, statusId, dotId, cam) {
@@ -197,13 +239,21 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
   const status  = document.getElementById(statusId);
   const dot     = document.getElementById(dotId);
   const msg     = document.getElementById(overlayId + '-msg');
-  const url     = buildHlsUrl(cam);
+  const url     = buildHlsUrl(cam, currentQuality);
 
   function setLive() {
     overlay.style.display = 'none';
     dot.style.background  = '#22c55e';
     status.style.color    = '#22c55e';
     status.textContent    = 'Live';
+  }
+
+  function setConnecting() {
+    overlay.style.display = 'flex';
+    dot.style.background  = '#64748b';
+    status.style.color    = '#64748b';
+    status.textContent    = 'Connecting…';
+    if (msg) msg.textContent = 'Loading stream…';
   }
 
   function setError(text) {
@@ -214,6 +264,8 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
     if (msg) msg.textContent = text || 'Stream unavailable';
   }
 
+  setConnecting();
+
   if (Hls.isSupported()) {
     const hls = new Hls({
       lowLatencyMode: false,
@@ -222,6 +274,7 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
       manifestLoadingTimeOut: 10000,
       manifestLoadingMaxRetry: 3,
     });
+    players[videoId] = { hls, args: [videoId, overlayId, statusId, dotId, cam] };
     hls.loadSource(url);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
@@ -234,6 +287,7 @@ function initPlayer(videoId, overlayId, statusId, dotId, cam) {
       }
     });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    players[videoId] = { hls: null, args: [videoId, overlayId, statusId, dotId, cam] };
     video.src = url;
     video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); setLive(); });
     video.addEventListener('error', () => setError('Stream unavailable'));
