@@ -7,7 +7,7 @@ services:
       - "8090:8080"   # Caddy proxies solix.vmedia.fun → 192.168.50.195:8090
     volumes:
       - solix-data:/data
-      - /volume2/docker/solix-monitor/recordings:/recordings:ro
+      - /volume2/docker/solix-monitor/recordings:/recordings
     environment:
       - DATA_DIR=/data
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
