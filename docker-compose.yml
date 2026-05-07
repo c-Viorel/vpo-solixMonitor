@@ -7,6 +7,7 @@ services:
       - "8090:8080"   # Caddy proxies solix.vmedia.fun → 192.168.50.195:8090
     volumes:
       - solix-data:/data
+      - /volume2/docker/solix-monitor/recordings:/recordings:ro
     environment:
       - DATA_DIR=/data
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
@@ -16,6 +17,9 @@ services:
       - CAMERA1_NAME=${CAMERA1_NAME:-Camera 1}
       - CAMERA2_NAME=${CAMERA2_NAME:-Camera 2}
       - CAMERAS_ENABLED=${CAMERAS_ENABLED:-false}
+      - RECORDINGS_DIR=/recordings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
       interval: 60s

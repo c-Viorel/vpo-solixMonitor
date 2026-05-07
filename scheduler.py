@@ -6,6 +6,7 @@ A cron.py script is also provided as a separate entry point for use with
 Hostinger's built-in cron job manager.
 """
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -141,6 +142,18 @@ def _purge_job(app) -> None:
             logger.error("DB purge failed: %s", exc)
 
 
+def _thumbgen_job(app) -> None:
+    """Generate thumbnail sprites for new recording segments (runs every 5 min)."""
+    cameras_enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
+    if not cameras_enabled:
+        return
+    try:
+        from thumbnail_gen import run_all
+        run_all()
+    except Exception as exc:
+        logger.error("Thumbnail generation failed: %s", exc)
+
+
 def start_scheduler(app) -> None:
     """Start the APScheduler BackgroundScheduler + MQTT listener."""
     global _scheduler
@@ -167,6 +180,16 @@ def start_scheduler(app) -> None:
         trigger=IntervalTrigger(weeks=1),
         id="purge_old_data",
         name="Purge old readings",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        func=_thumbgen_job,
+        args=[app],
+        trigger=IntervalTrigger(minutes=5),
+        id="thumbnail_gen",
+        name="DVR thumbnail sprite generation",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

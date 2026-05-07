@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}Playback · Solix Monitor{% endblock %}
+
+{% block head %}
+<style>
+/* ── DVR Timeline ─────────────────────────────────────────────────── */
+#timeline-wrap {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+#timeline-bar {
+  width: 100%;
+  height: 40px;
+  background: #0d1a2d;
+  border: 1px solid #152035;
+  border-radius: 8px;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+#timeline-fill {
+  position: absolute;
+  left: 0; top: 0; height: 100%;
+  background: rgba(34,197,94,0.25);
+  pointer-events: none;
+  transition: width 0.1s linear;
+}
+#timeline-cursor {
+  position: absolute;
+  top: 0; height: 100%;
+  width: 2px;
+  background: #22c55e;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: left 0.05s linear;
+}
+.seg-block {
+  position: absolute;
+  top: 4px; bottom: 4px;
+  background: rgba(99,102,241,0.4);
+  border-radius: 3px;
+  border: 1px solid rgba(99,102,241,0.6);
+}
+#thumb-preview {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: #060d1a;
+  border: 1px solid #1e3a5f;
+  border-radius: 6px;
+  padding: 3px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+  display: none;
+  z-index: 100;
+}
+#thumb-preview img { display: block; width: 160px; height: 90px; object-fit: cover; border-radius: 4px; }
+#thumb-preview span { display: block; text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 3px; }
+#time-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 4px;
+  text-align: center;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-5 flex items-center justify-between">
+  <div>
+    <h1 style="color:#f1f5f9; font-size:1.4rem; font-weight:700;">📼 Playback</h1>
+    <p style="color:#64748b; font-size:0.8rem;" class="mt-1">Ultimele 24h · 5 minute / segment</p>
+  </div>
+  <!-- Camera selector -->
+  <div style="display:flex; gap:8px;">
+    <a href="/playback/camera1"
+       style="padding:6px 16px; border-radius:20px; font-size:0.8rem; font-weight:600; border:1.5px solid {% if cam=='camera1' %}#6366f1{% else %}#334155{% endif %}; background:{% if cam=='camera1' %}#6366f122{% else %}transparent{% endif %}; color:{% if cam=='camera1' %}#818cf8{% else %}#64748b{% endif %}; text-decoration:none;">
+      {{ cam1_name }}
+    </a>
+    <a href="/playback/camera2"
+       style="padding:6px 16px; border-radius:20px; font-size:0.8rem; font-weight:600; border:1.5px solid {% if cam=='camera2' %}#6366f1{% else %}#334155{% endif %}; background:{% if cam=='camera2' %}#6366f122{% else %}transparent{% endif %}; color:{% if cam=='camera2' %}#818cf8{% else %}#64748b{% endif %}; text-decoration:none;">
+      {{ cam2_name }}
+    </a>
+  </div>
+</div>
+
+{% if not cameras_enabled %}
+<div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-6 text-center">
+  <p style="color:#64748b;">Camerele nu sunt activate. Configurează <code>CAMERAS_ENABLED=true</code> în <code>.env</code>.</p>
+</div>
+{% else %}
+
+<!-- Video Player -->
+<div style="background:#000; border-radius:12px; overflow:hidden; aspect-ratio:16/9; position:relative;" class="mb-5">
+  <video id="dvr-video" controls playsinline
+         style="width:100%; height:100%; object-fit:contain; display:block;"></video>
+  <div id="dvr-overlay"
+       style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.75); flex-direction:column; gap:12px;">
+    <svg class="w-12 h-12" style="color:#334155;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M3 9.5L12 3l9 6.5v10a1 1 0 01-1 1H4a1 1 0 01-1-1v-10z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 22V12h6v10"/>
+    </svg>
+    <p id="dvr-overlay-msg" style="color:#64748b; font-size:0.85rem;">Selectează un segment din timeline</p>
+    <div id="dvr-spinner" style="display:none; width:32px; height:32px; border:3px solid #1e3a5f; border-top-color:#6366f1; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+  </div>
+</div>
+
+<!-- Now-playing info -->
+<div id="playing-info" style="color:#94a3b8; font-size:0.8rem;" class="mb-4 text-center" hidden>
+  Segment: <span id="playing-time" style="color:#f1f5f9; font-weight:600;"></span>
+  · Durată: <span id="playing-dur" style="color:#f1f5f9;"></span>
+</div>
+
+<!-- Timeline -->
+<div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-4">
+  <div class="flex items-center justify-between mb-3">
+    <span style="color:#94a3b8; font-size:0.8rem; font-weight:600;">Timeline 24h</span>
+    <span id="seg-count" style="color:#475569; font-size:0.75rem;"></span>
+  </div>
+
+  <!-- Timeline bar -->
+  <div id="timeline-wrap">
+    <div id="thumb-preview">
+      <img id="thumb-img" src="" alt="">
+      <span id="thumb-time"></span>
+    </div>
+    <div id="timeline-bar">
+      <div id="timeline-fill"></div>
+      <div id="timeline-cursor"></div>
+      <!-- segment blocks rendered by JS -->
+    </div>
+  </div>
+  <div id="time-label">← Trage sau apasă pe timeline pentru a selecta</div>
+
+  <!-- Segment list -->
+  <div id="seg-list" class="mt-4 space-y-1" style="max-height:200px; overflow-y:auto;"></div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if cameras_enabled %}
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+const CAM = {{ cam | tojson }};
+const CAM_LO = CAM + 'lo';
+
+let segments = [];
+let currentSeg = null;
+let sprites = {};       // start → { meta, img }
+let timeRange = { start: null, end: null };
+
+// ─── Fetch segment list ───────────────────────────────────────────────────
+async function loadSegments() {
+  document.getElementById('seg-count').textContent = 'Încarcă…';
+  try {
+    const resp = await fetch(`/recordings/list/${CAM}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    segments = await resp.json();
+    if (segments.error) throw new Error(segments.error);
+  } catch (e) {
+    document.getElementById('seg-count').textContent = 'Eroare: ' + e.message;
+    return;
+  }
+  if (!segments.length) {
+    document.getElementById('seg-count').textContent = 'Nicio înregistrare (înregistrarea abia a pornit)';
+    return;
+  }
+  document.getElementById('seg-count').textContent = `${segments.length} segmente`;
+  computeTimeRange();
+  renderTimeline();
+  renderSegList();
+  prefetchSprites();
+}
+
+function computeTimeRange() {
+  const starts = segments.map(s => new Date(s.start).getTime());
+  const ends   = segments.map(s => new Date(s.start).getTime() + s.duration * 1000);
+  timeRange.start = Math.min(...starts);
+  timeRange.end   = Math.max(...ends);
+}
+
+// ─── Timeline rendering ──────────────────────────────────────────────────
+function renderTimeline() {
+  const bar = document.getElementById('timeline-bar');
+  // Remove old segment blocks
+  bar.querySelectorAll('.seg-block').forEach(el => el.remove());
+
+  const span = timeRange.end - timeRange.start;
+  segments.forEach(seg => {
+    const s = new Date(seg.start).getTime();
+    const left = ((s - timeRange.start) / span) * 100;
+    const width = (seg.duration * 1000 / span) * 100;
+    const div = document.createElement('div');
+    div.className = 'seg-block';
+    div.style.left  = left + '%';
+    div.style.width = Math.max(width, 0.3) + '%';
+    div.title = formatTime(s) + ' · ' + Math.round(seg.duration) + 's';
+    div.addEventListener('click', e => { e.stopPropagation(); playSeg(seg); });
+    bar.appendChild(div);
+  });
+}
+
+function renderSegList() {
+  const list = document.getElementById('seg-list');
+  list.innerHTML = '';
+  [...segments].reverse().forEach(seg => {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent;';
+    d.innerHTML = `
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#6366f1" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+        <circle cx="12" cy="12" r="9"/>
+      </svg>
+      <span style="color:#94a3b8; font-size:0.8rem;">${formatDateTime(new Date(seg.start).getTime())}</span>
+      <span style="color:#475569; font-size:0.75rem; margin-left:auto;">${Math.round(seg.duration)}s</span>`;
+    d.addEventListener('mouseenter', () => { d.style.background='#152035'; d.style.borderColor='#1e3a5f'; });
+    d.addEventListener('mouseleave', () => { d.style.background='transparent'; d.style.borderColor='transparent'; });
+    d.addEventListener('click', () => playSeg(seg));
+    list.appendChild(d);
+  });
+}
+
+// ─── Playback ─────────────────────────────────────────────────────────────
+function playSeg(seg) {
+  currentSeg = seg;
+  const video = document.getElementById('dvr-video');
+  const overlay = document.getElementById('dvr-overlay');
+  const spinner = document.getElementById('dvr-spinner');
+  const overlayMsg = document.getElementById('dvr-overlay-msg');
+
+  overlay.style.display = 'flex';
+  spinner.style.display = 'block';
+  overlayMsg.textContent = 'Încarcă segmentul…';
+
+  video.src = seg.proxy_url;
+  video.load();
+  video.addEventListener('canplay', function onReady() {
+    video.removeEventListener('canplay', onReady);
+    overlay.style.display = 'none';
+    spinner.style.display = 'none';
+    video.play().catch(() => {});
+    // Update playing info
+    document.getElementById('playing-info').hidden = false;
+    document.getElementById('playing-time').textContent = formatDateTime(new Date(seg.start).getTime());
+    document.getElementById('playing-dur').textContent = Math.round(seg.duration) + 's';
+  }, { once: true });
+  video.addEventListener('error', function onErr() {
+    video.removeEventListener('error', onErr);
+    spinner.style.display = 'none';
+    overlayMsg.textContent = 'Eroare la încărcarea segmentului';
+  }, { once: true });
+
+  // Update cursor position
+  const span = timeRange.end - timeRange.start;
+  const pos = (new Date(seg.start).getTime() - timeRange.start) / span * 100;
+  document.getElementById('timeline-cursor').style.left = pos + '%';
+  document.getElementById('timeline-fill').style.width = pos + '%';
+}
+
+// ─── Thumbnail sprites ────────────────────────────────────────────────────
+async function prefetchSprites() {
+  // Prefetch sprites for the 5 most recent segments
+  const recent = segments.slice(-5);
+  for (const seg of recent) {
+    fetchSprite(seg);
+  }
+}
+
+async function fetchSprite(seg) {
+  const key = seg.start;
+  if (sprites[key]) return;
+  sprites[key] = { meta: null, img: null };
+  try {
+    const ts = seg.start.slice(0, 19).replace(/:/g, '-');
+    const resp = await fetch(seg.sprite_url);
+    if (!resp.ok) return;
+    const meta = JSON.parse(resp.headers.get('X-Sprite-Meta') || 'null');
+    if (!meta) return;
+    const blob = await resp.blob();
+    sprites[key] = { meta, img: URL.createObjectURL(blob) };
+  } catch {}
+}
+
+// ─── Timeline interaction ─────────────────────────────────────────────────
+function posToTime(pct) {
+  return timeRange.start + pct * (timeRange.end - timeRange.start);
+}
+
+function segAtTime(ts) {
+  return segments.find(seg => {
+    const s = new Date(seg.start).getTime();
+    return ts >= s && ts <= s + seg.duration * 1000;
+  }) || null;
+}
+
+function showThumb(e) {
+  const bar = document.getElementById('timeline-bar');
+  const preview = document.getElementById('thumb-preview');
+  if (!timeRange.start || !segments.length) return;
+
+  const rect = bar.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const ts = posToTime(pct);
+
+  // Move cursor
+  document.getElementById('timeline-cursor').style.left = (pct * 100) + '%';
+
+  // Find segment at this time
+  const seg = segAtTime(ts);
+  if (!seg) { preview.style.display = 'none'; return; }
+
+  // Show time label
+  document.getElementById('thumb-time').textContent = formatDateTime(ts);
+
+  // Fetch sprite if needed
+  if (!sprites[seg.start]) {
+    fetchSprite(seg);
+    preview.style.display = 'none';
+    return;
+  }
+  const sp = sprites[seg.start];
+  if (!sp.img || !sp.meta) { preview.style.display = 'none'; return; }
+
+  // Calculate which thumbnail to show
+  const segOffset = (ts - new Date(seg.start).getTime()) / 1000;
+  const thumbIdx = Math.min(Math.floor(segOffset / sp.meta.interval), sp.meta.count - 1);
+  const col = thumbIdx % sp.meta.cols;
+  const row = Math.floor(thumbIdx / sp.meta.cols);
+  const bgX = -col * sp.meta.width;
+  const bgY = -row * sp.meta.height;
+
+  const img = document.getElementById('thumb-img');
+  img.src = sp.img;
+  img.style.objectPosition = `${bgX}px ${bgY}px`;
+  img.style.objectFit = 'none';
+  img.style.width = sp.meta.width + 'px';
+  img.style.height = sp.meta.height + 'px';
+  img.style.marginLeft = '0';
+  // Use background trick for better performance
+  img.style.display = 'none';
+  img.style.display = 'block';
+
+  // Position preview
+  const leftPct = pct * 100;
+  preview.style.left = `${pct * 100}%`;
+  preview.style.display = 'block';
+
+  // Update time label
+  document.getElementById('time-label').textContent = formatDateTime(ts);
+}
+
+function hideThumb() {
+  document.getElementById('thumb-preview').style.display = 'none';
+  if (timeRange.start) {
+    document.getElementById('time-label').textContent = '← Trage sau apasă pe timeline pentru a selecta';
+  }
+}
+
+function handleClick(e) {
+  const bar = document.getElementById('timeline-bar');
+  const rect = bar.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const ts = posToTime(pct);
+  const seg = segAtTime(ts);
+  if (seg) playSeg(seg);
+}
+
+// Wire up timeline events
+document.addEventListener('DOMContentLoaded', () => {
+  const bar = document.getElementById('timeline-bar');
+  bar.addEventListener('mousemove', showThumb);
+  bar.addEventListener('mouseleave', hideThumb);
+  bar.addEventListener('click', handleClick);
+  // Touch support
+  bar.addEventListener('touchmove', e => { e.preventDefault(); showThumb(e); }, { passive: false });
+  bar.addEventListener('touchend', handleClick);
+
+  loadSegments();
+  // Refresh segment list every 5 minutes
+  setInterval(loadSegments, 5 * 60 * 1000);
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function formatTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Bucharest' });
+}
+
+function formatDateTime(ts) {
+  const d = typeof ts === 'number' ? new Date(ts) : ts;
+  return d.toLocaleString('ro-RO', {
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'Europe/Bucharest'
+  });
+}
+</script>
+{% endif %}
+{% endblock %}

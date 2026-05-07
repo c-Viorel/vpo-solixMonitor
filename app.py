@@ -6,6 +6,8 @@ Routes
 GET  /                  → dashboard (latest reading + today's stats)
 GET  /history           → charts for past 24 h / 7 d / 30 d
 GET  /cameras           → live camera feeds (requires login + mediamtx)
+GET  /playback          → DVR playback — 24h timeline with thumbnail scrubbing
+GET  /playback/<cam>    → DVR playback for specific camera
 GET  /login             → login form
 POST /login             → authenticate admin
 GET  /logout            → clear session
@@ -380,6 +382,127 @@ def create_app():
     def api_energy_lifetime():
         from db import get_lifetime_energy
         return jsonify(get_lifetime_energy())
+
+    @app.route("/playback")
+    @app.route("/playback/<cam>")
+    @login_required
+    def playback(cam="camera1"):
+        """DVR playback page — 24h timeline with thumbnail scrubbing."""
+        enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
+        cam1_name = os.environ.get("CAMERA1_NAME", "Camera 1")
+        cam2_name = os.environ.get("CAMERA2_NAME", "Camera 2")
+        return render_template(
+            "playback.html",
+            cameras_enabled=enabled,
+            cam=cam,
+            cam1_name=cam1_name,
+            cam2_name=cam2_name,
+        )
+
+    @app.route("/recordings/list/<cam>")
+    @login_required
+    def recordings_list(cam):
+        """Proxy MediaMTX playback list API → returns segments JSON."""
+        import urllib.request, json as _json
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed:
+            return jsonify({"error": "invalid camera"}), 400
+        mtx_cam = cam + "lo"
+        mtx_url = f"http://host.docker.internal:9996/list?path={mtx_cam}"
+        try:
+            with urllib.request.urlopen(mtx_url, timeout=5) as r:
+                data = _json.loads(r.read())
+            # Rewrite MediaMTX internal URLs to our proxy URLs
+            for seg in data:
+                seg["proxy_url"] = f"/recordings/get/{cam}?start={seg['start']}&duration={seg['duration']}"
+                seg["sprite_url"] = f"/recordings/sprite/{cam}/{seg['start'][:19].replace(':', '-')}"
+            return jsonify(data)
+        except Exception as exc:
+            return jsonify({"error": str(exc), "segments": []}), 503
+
+    @app.route("/recordings/get/<cam>")
+    @login_required
+    def recordings_get(cam):
+        """Proxy MediaMTX /get endpoint — serves MP4 video segment."""
+        import urllib.request
+        from flask import Response, stream_with_context
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed:
+            return jsonify({"error": "invalid camera"}), 400
+        mtx_cam = cam + "lo"
+        start = request.args.get("start", "")
+        duration = request.args.get("duration", "")
+        from urllib.parse import urlencode
+        mtx_url = f"http://host.docker.internal:9996/get?" + urlencode({
+            "path": mtx_cam, "start": start, "duration": duration
+        })
+        try:
+            req = urllib.request.Request(mtx_url)
+            # Forward Range header for seeking support
+            if "Range" in request.headers:
+                req.add_header("Range", request.headers["Range"])
+            resp = urllib.request.urlopen(req, timeout=30)
+            status = resp.status
+            headers = {
+                "Content-Type": resp.headers.get("Content-Type", "video/mp4"),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache",
+            }
+            if resp.headers.get("Content-Range"):
+                headers["Content-Range"] = resp.headers["Content-Range"]
+            if resp.headers.get("Content-Length"):
+                headers["Content-Length"] = resp.headers["Content-Length"]
+            return Response(stream_with_context(iter(lambda: resp.read(65536), b"")),
+                            status=status, headers=headers)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 503
+
+    @app.route("/recordings/sprite/<cam>/<ts>")
+    @login_required
+    def recordings_sprite(cam, ts):
+        """Serve pre-generated thumbnail sprite for a recording segment."""
+        import re
+        from flask import send_file
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed or not re.match(r'^[\d\-_T:Z]+$', ts):
+            return jsonify({"error": "invalid"}), 400
+        recordings_dir = os.environ.get("RECORDINGS_DIR", "/recordings")
+        mtx_cam = cam + "lo"
+        # ts format: 2026-05-07T21-18-41 → find matching sprite
+        cam_dir = os.path.join(recordings_dir, mtx_cam)
+        if not os.path.isdir(cam_dir):
+            return jsonify({"error": "no recordings"}), 404
+        # Find sprite file matching timestamp prefix
+        ts_normalized = ts.replace("T", "_").replace(":", "-")
+        sprite = os.path.join(cam_dir, ts_normalized + ".sprite.jpg")
+        meta = os.path.join(cam_dir, ts_normalized + ".sprite.json")
+        if not os.path.exists(sprite):
+            return jsonify({"error": "sprite not ready"}), 404
+        # Return sprite + meta in headers
+        import json as _json
+        resp = send_file(sprite, mimetype="image/jpeg")
+        if os.path.exists(meta):
+            with open(meta) as f:
+                m = _json.load(f)
+            resp.headers["X-Sprite-Meta"] = _json.dumps(m)
+        return resp
+
+    @app.route("/recordings/sprite-meta/<cam>/<ts>")
+    @login_required
+    def recordings_sprite_meta(cam, ts):
+        """Return sprite metadata JSON."""
+        import re, json as _json
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed or not re.match(r'^[\d\-_T:Z]+$', ts):
+            return jsonify({"error": "invalid"}), 400
+        recordings_dir = os.environ.get("RECORDINGS_DIR", "/recordings")
+        mtx_cam = cam + "lo"
+        ts_normalized = ts.replace("T", "_").replace(":", "-")
+        meta = os.path.join(recordings_dir, mtx_cam, ts_normalized + ".sprite.json")
+        if not os.path.exists(meta):
+            return jsonify({"error": "not ready"}), 404
+        with open(meta) as f:
+            return jsonify(_json.load(f))
 
     @app.route("/cameras")
     @login_required
