@@ -11,60 +11,114 @@
   -webkit-user-select: none;
   touch-action: none;
 }
+#timeline-track {
+  position: relative;
+  padding-top: 10px; /* space for playhead triangle */
+}
 #timeline-bar {
   width: 100%;
-  height: 40px;
-  background: #0d1a2d;
-  border: 1px solid #152035;
-  border-radius: 8px;
+  height: 38px;
+  background: #060c18;
+  border: 1px solid #1a2d45;
+  border-radius: 4px;
   position: relative;
-  cursor: pointer;
+  cursor: crosshair;
   overflow: hidden;
-}
-#timeline-fill {
-  position: absolute;
-  left: 0; top: 0; height: 100%;
-  background: rgba(34,197,94,0.25);
-  pointer-events: none;
-  transition: width 0.1s linear;
 }
 #timeline-cursor {
   position: absolute;
-  top: 0; height: 100%;
+  top: 0; bottom: 0;
   width: 2px;
   background: #22c55e;
   pointer-events: none;
   transform: translateX(-50%);
-  transition: left 0.05s linear;
+  z-index: 10;
+}
+#timeline-cursor::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 10px; height: 10px;
+  background: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(34,197,94,0.6);
+}
+/* Triangle marker above the bar */
+#playhead-flag {
+  position: absolute;
+  top: 0;
+  width: 12px; height: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 20;
+}
+#playhead-flag::before {
+  content: '';
+  display: block;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid #22c55e;
 }
 .seg-block {
   position: absolute;
-  top: 4px; bottom: 4px;
-  background: rgba(99,102,241,0.4);
-  border-radius: 3px;
-  border: 1px solid rgba(99,102,241,0.6);
+  top: 0; bottom: 0;
+  background: rgba(99,102,241,0.38);
+  border-right: 1px solid #060c18;
+  cursor: pointer;
+  transition: background 0.12s;
 }
+.seg-block:hover   { background: rgba(99,102,241,0.65); }
+.seg-block.active  {
+  background: rgba(99,102,241,0.75);
+  box-shadow: inset 2px 0 0 #818cf8;
+}
+/* Time axis */
+#time-axis {
+  position: relative;
+  height: 18px;
+  margin-top: 3px;
+}
+.time-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.63rem;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.time-tick::before {
+  content: '';
+  position: absolute;
+  top: -5px; left: 50%;
+  transform: translateX(-50%);
+  width: 1px; height: 4px;
+  background: #1e3050;
+}
+/* Thumbnail preview */
 #thumb-preview {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 14px);
   transform: translateX(-50%);
   pointer-events: none;
   background: #060d1a;
   border: 1px solid #1e3a5f;
   border-radius: 6px;
-  padding: 3px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+  padding: 4px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8);
   display: none;
   z-index: 100;
 }
-#thumb-preview img { display: block; width: 160px; height: 90px; border-radius: 4px; }
-#thumb-preview span { display: block; text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 3px; }
-#time-label {
-  font-size: 0.72rem;
-  color: #64748b;
-  margin-top: 4px;
-  text-align: center;
+#thumb-preview span { display: block; text-align: center; font-size: 0.68rem; color: #64748b; margin-top: 4px; padding: 0 2px; }
+/* Segment list */
+.seg-list-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
 }
+.seg-list-row:hover  { background: #0f1e33; border-color: #1e3050; }
+.seg-list-row.active { background: #111e35; border-color: rgba(99,102,241,0.4); }
 </style>
 {% endblock %}
 
@@ -125,28 +179,36 @@
 </div>
 
 <!-- Timeline -->
-<div style="background:#0d1a2d; border:1px solid #152035; border-radius:12px;" class="p-4">
-  <div class="flex items-center justify-between mb-3">
-    <span style="color:#94a3b8; font-size:0.8rem; font-weight:600;">Timeline 24h</span>
-    <span id="seg-count" style="color:#475569; font-size:0.75rem;"></span>
+<div style="background:#090f1c; border:1px solid #1a2d45; border-radius:12px;" class="p-4 pb-5">
+  <div class="flex items-center justify-between mb-4">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="color:#475569; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">Timeline</span>
+      <span id="seg-count" style="color:#334155; font-size:0.72rem;"></span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; font-size:0.72rem; color:#334155;">
+      <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.55); border-radius:2px;"></span> înregistrat
+      <span style="display:inline-block; width:10px; height:10px; background:rgba(99,102,241,0.8); border-radius:2px; margin-left:6px; box-shadow:inset 2px 0 0 #818cf8;"></span> redare curentă
+    </div>
   </div>
 
-  <!-- Timeline bar -->
+  <!-- Timeline bar + time axis -->
   <div id="timeline-wrap">
-    <div id="thumb-preview">
-      <img id="thumb-img" src="" alt="">
-      <span id="thumb-time"></span>
-    </div>
-    <div id="timeline-bar">
-      <div id="timeline-fill"></div>
-      <div id="timeline-cursor"></div>
-      <!-- segment blocks rendered by JS -->
+    <div id="timeline-track">
+      <div id="playhead-flag" style="display:none;"></div>
+      <div id="thumb-preview">
+        <img id="thumb-img" src="" alt="" style="display:block; width:160px; height:90px; border-radius:4px;">
+        <span id="thumb-time"></span>
+      </div>
+      <div id="timeline-bar">
+        <div id="timeline-cursor" style="display:none;"></div>
+        <!-- segment blocks rendered by JS -->
+      </div>
+      <div id="time-axis"></div>
     </div>
   </div>
-  <div id="time-label">← Trage sau apasă pe timeline pentru a selecta</div>
 
   <!-- Segment list -->
-  <div id="seg-list" class="mt-4 space-y-1" style="max-height:200px; overflow-y:auto;"></div>
+  <div id="seg-list" class="mt-5" style="max-height:210px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;"></div>
 </div>
 
 {% endif %}
@@ -199,7 +261,6 @@ function computeTimeRange() {
 // ─── Timeline rendering ──────────────────────────────────────────────────
 function renderTimeline() {
   const bar = document.getElementById('timeline-bar');
-  // Remove old segment blocks
   bar.querySelectorAll('.seg-block').forEach(el => el.remove());
 
   const span = timeRange.end - timeRange.start;
@@ -209,12 +270,39 @@ function renderTimeline() {
     const width = (seg.duration * 1000 / span) * 100;
     const div = document.createElement('div');
     div.className = 'seg-block';
+    div.dataset.start = seg.start;
     div.style.left  = left + '%';
     div.style.width = Math.max(width, 0.3) + '%';
     div.title = formatTime(s) + ' · ' + Math.round(seg.duration) + 's';
     div.addEventListener('click', e => { e.stopPropagation(); playSeg(seg); });
     bar.appendChild(div);
   });
+
+  renderTimeAxis();
+}
+
+function renderTimeAxis() {
+  const axis = document.getElementById('time-axis');
+  axis.innerHTML = '';
+  if (!timeRange.start) return;
+  const spanMs = timeRange.end - timeRange.start;
+  const spanMin = spanMs / 60000;
+  let tickMin = 60;
+  if      (spanMin <= 30)  tickMin = 5;
+  else if (spanMin <= 60)  tickMin = 10;
+  else if (spanMin <= 120) tickMin = 15;
+  else if (spanMin <= 360) tickMin = 30;
+  const tickMs = tickMin * 60000;
+  let t = Math.ceil(timeRange.start / tickMs) * tickMs;
+  while (t <= timeRange.end) {
+    const pct = (t - timeRange.start) / spanMs * 100;
+    const tick = document.createElement('div');
+    tick.className = 'time-tick';
+    tick.style.left = pct + '%';
+    tick.textContent = new Date(t).toLocaleTimeString('ro-RO', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Bucharest' });
+    axis.appendChild(tick);
+    t += tickMs;
+  }
 }
 
 function renderSegList() {
@@ -222,19 +310,27 @@ function renderSegList() {
   list.innerHTML = '';
   [...segments].reverse().forEach(seg => {
     const d = document.createElement('div');
-    d.style.cssText = 'display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent;';
+    d.className = 'seg-list-row';
+    d.dataset.start = seg.start;
     d.innerHTML = `
-      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#6366f1" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-        <circle cx="12" cy="12" r="9"/>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4f5896" stroke-width="2.5">
+        <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
-      <span style="color:#94a3b8; font-size:0.8rem;">${formatDateTime(new Date(seg.start).getTime())}</span>
-      <span style="color:#475569; font-size:0.75rem; margin-left:auto;">${Math.round(seg.duration)}s</span>`;
-    d.addEventListener('mouseenter', () => { d.style.background='#152035'; d.style.borderColor='#1e3a5f'; });
-    d.addEventListener('mouseleave', () => { d.style.background='transparent'; d.style.borderColor='transparent'; });
+      <span style="color:#64748b; font-size:0.78rem; font-variant-numeric:tabular-nums;">${formatDateTime(new Date(seg.start).getTime())}</span>
+      <span style="color:#2d3f5a; font-size:0.72rem; margin-left:auto;">${Math.round(seg.duration)}s</span>`;
     d.addEventListener('click', () => playSeg(seg));
     list.appendChild(d);
   });
+}
+
+// ─── Cursor / playhead helper ─────────────────────────────────────────────
+function updateCursor(pct) {
+  const cursor = document.getElementById('timeline-cursor');
+  const flag   = document.getElementById('playhead-flag');
+  cursor.style.left = (pct * 100) + '%';
+  cursor.style.display = 'block';
+  flag.style.left = (pct * 100) + '%';
+  flag.style.display = 'block';
 }
 
 // ─── Playback ─────────────────────────────────────────────────────────────
@@ -244,6 +340,14 @@ function playSeg(seg, seekToTs) {
   const overlay = document.getElementById('dvr-overlay');
   const spinner = document.getElementById('dvr-spinner');
   const overlayMsg = document.getElementById('dvr-overlay-msg');
+
+  // Mark active in timeline bar and segment list
+  document.querySelectorAll('.seg-block').forEach(el => el.classList.remove('active'));
+  const activeBlock = document.querySelector(`.seg-block[data-start="${seg.start}"]`);
+  if (activeBlock) activeBlock.classList.add('active');
+  document.querySelectorAll('.seg-list-row').forEach(el => el.classList.remove('active'));
+  const activeRow = document.querySelector(`.seg-list-row[data-start="${seg.start}"]`);
+  if (activeRow) { activeRow.classList.add('active'); activeRow.scrollIntoView({ block:'nearest' }); }
 
   // Offset (seconds) within segment to seek to after load
   const seekOffset = seekToTs
@@ -271,14 +375,12 @@ function playSeg(seg, seekToTs) {
     video.removeEventListener('loadedmetadata', onMeta);
     if (seekOffset > 0.5) {
       video.currentTime = seekOffset;
-      // Wait for seek to complete before playing
       const onSeeked = () => {
         video.removeEventListener('seeked', onSeeked);
         hideOverlay();
         video.play().catch(() => {});
       };
       video.addEventListener('seeked', onSeeked);
-      // Fallback: if seeked doesn't fire in 3s, play anyway
       setTimeout(() => {
         video.removeEventListener('seeked', onSeeked);
         hideOverlay();
@@ -296,12 +398,10 @@ function playSeg(seg, seekToTs) {
     overlayMsg.textContent = 'Eroare la încărcarea segmentului';
   }, { once: true });
 
-  // Update cursor to actual clicked position
+  // Move cursor to clicked position
   const span = timeRange.end - timeRange.start;
   const cursorTs = seekToTs || new Date(seg.start).getTime();
-  const pos = (cursorTs - timeRange.start) / span * 100;
-  document.getElementById('timeline-cursor').style.left = pos + '%';
-  document.getElementById('timeline-fill').style.width = pos + '%';
+  updateCursor((cursorTs - timeRange.start) / span);
 }
 
 // ─── Thumbnail sprites ────────────────────────────────────────────────────
@@ -350,8 +450,9 @@ function showThumb(e) {
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   const ts = posToTime(pct);
 
-  // Move cursor
+  // Move cursor (hover only, no playhead flag)
   document.getElementById('timeline-cursor').style.left = (pct * 100) + '%';
+  document.getElementById('timeline-cursor').style.display = 'block';
 
   // Find segment at this time
   const seg = segAtTime(ts);
@@ -395,15 +496,13 @@ function showThumb(e) {
   const clampedLeft = Math.max(previewW / 2, Math.min(rawLeft, barRect.width - previewW / 2));
   preview.style.left = clampedLeft + 'px';
   preview.style.display = 'block';
-
-  // Update time label
-  document.getElementById('time-label').textContent = formatDateTime(ts);
 }
 
 function hideThumb() {
   document.getElementById('thumb-preview').style.display = 'none';
-  if (timeRange.start) {
-    document.getElementById('time-label').textContent = '← Trage sau apasă pe timeline pentru a selecta';
+  // Restore cursor to playhead position if a segment is playing
+  if (!currentSeg) {
+    document.getElementById('timeline-cursor').style.display = 'none';
   }
 }
 
