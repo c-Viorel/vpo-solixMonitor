@@ -584,6 +584,19 @@ def create_app():
         with open(matches[0]) as f:
             return jsonify(_json.load(f))
 
+    @app.route("/recordings/motion/<cam>")
+    @login_required
+    def recordings_motion(cam):
+        """Return motion detection events for the last 24 h of recordings."""
+        from db import get_motion_events, get_setting
+        allowed = {"camera1", "camera2"}
+        if cam not in allowed:
+            return jsonify({"error": "invalid camera"}), 400
+        quality = get_setting("dvr_record_quality", "sd")
+        mtx_cam = cam if quality == "hd" else cam + "lo"
+        events = get_motion_events(mtx_cam)
+        return jsonify(events), 200, {"Cache-Control": "no-store"}
+
     @app.route("/cameras")
     @login_required
     def cameras():

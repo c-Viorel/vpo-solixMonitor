@@ -78,6 +78,23 @@ def init_db() -> None:
                 value   TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS motion_events (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                camera        TEXT NOT NULL,
+                segment_start TEXT NOT NULL,
+                offset_sec    REAL NOT NULL,
+                motion_type   TEXT NOT NULL      -- 'motion' or 'person'
+            );
+            CREATE INDEX IF NOT EXISTS idx_motion_cam_seg
+                ON motion_events (camera, segment_start);
+
+            -- Tracks which segments have been analyzed (even if no motion found)
+            CREATE TABLE IF NOT EXISTS motion_analyzed (
+                camera        TEXT NOT NULL,
+                segment_start TEXT NOT NULL,
+                PRIMARY KEY (camera, segment_start)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_readings_ts
                 ON readings (timestamp);
         """)
@@ -319,4 +336,74 @@ def delete_setting(key: str) -> None:
     conn = get_db()
     with conn:
         conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Motion events
+# ---------------------------------------------------------------------------
+
+def has_motion_analyzed(camera: str, segment_start: str) -> bool:
+    """Return True if motion detection has already been run for this segment."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT 1 FROM motion_analyzed WHERE camera=? AND segment_start=?",
+        (camera, segment_start),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def save_motion_events(camera: str, segment_start: str, events: list[dict]) -> None:
+    """Persist motion events for a segment and mark it as analyzed."""
+    conn = get_db()
+    with conn:
+        conn.execute(
+            "DELETE FROM motion_events WHERE camera=? AND segment_start=?",
+            (camera, segment_start),
+        )
+        for ev in events:
+            conn.execute(
+                "INSERT INTO motion_events (camera, segment_start, offset_sec, motion_type) "
+                "VALUES (?,?,?,?)",
+                (camera, segment_start, ev["offset_sec"], ev["motion_type"]),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO motion_analyzed (camera, segment_start) VALUES (?,?)",
+            (camera, segment_start),
+        )
+    conn.close()
+
+
+def get_motion_events(camera: str, since_iso: Optional[str] = None) -> list[dict]:
+    """Return motion events for a camera, newest-first by segment."""
+    conn = get_db()
+    if since_iso:
+        rows = conn.execute(
+            "SELECT segment_start, offset_sec, motion_type FROM motion_events "
+            "WHERE camera=? AND segment_start >= ? ORDER BY segment_start, offset_sec",
+            (camera, since_iso),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT segment_start, offset_sec, motion_type FROM motion_events "
+            "WHERE camera=? ORDER BY segment_start, offset_sec",
+            (camera,),
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def purge_old_motion_events(camera: str, since_iso: str) -> None:
+    """Delete motion events for segments older than since_iso."""
+    conn = get_db()
+    with conn:
+        conn.execute(
+            "DELETE FROM motion_events WHERE camera=? AND segment_start < ?",
+            (camera, since_iso),
+        )
+        conn.execute(
+            "DELETE FROM motion_analyzed WHERE camera=? AND segment_start < ?",
+            (camera, since_iso),
+        )
     conn.close()

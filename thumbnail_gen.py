@@ -11,8 +11,10 @@ JSON: { "interval": 10, "cols": 10, "count": N, "width": 160, "height": 90 }
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,16 @@ RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "/recordings")
 THUMB_INTERVAL = 10       # seconds between thumbnails
 THUMB_W, THUMB_H = 160, 90
 SPRITE_COLS = 10
+
+_SEG_PATTERN = re.compile(r'^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-\d+\.mp4$')
+
+
+def _parse_segment_start(fname: str) -> str | None:
+    """Parse a segment filename → ISO timestamp string matching recordings_list output."""
+    m = _SEG_PATTERN.match(fname)
+    if not m:
+        return None
+    return f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}Z"
 
 
 def _ffmpeg_sprite(mp4_path: Path, sprite_path: Path, meta_path: Path) -> bool:
@@ -103,6 +115,93 @@ def _ffmpeg_sprite(mp4_path: Path, sprite_path: Path, meta_path: Path) -> bool:
         return True
 
 
+def detect_motion_in_segment(cam: str, mp4_path: Path, segment_start_iso: str) -> int:
+    """
+    Analyze a recording segment for motion and persons using OpenCV.
+
+    Samples one frame every 5 seconds, computes frame difference to detect motion,
+    then runs the HOG person detector on frames that show motion.
+
+    Stores results in DB and marks segment as analyzed.
+    Returns number of motion events saved.
+    """
+    try:
+        import cv2  # opencv-python-headless
+    except ImportError:
+        logger.debug("opencv not installed — skipping motion detection")
+        return 0
+
+    from db import has_motion_analyzed, save_motion_events
+    if has_motion_analyzed(cam, segment_start_iso):
+        return 0
+
+    cap = cv2.VideoCapture(str(mp4_path))
+    if not cap.isOpened():
+        return 0
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration_sec = total_frames / fps if fps > 0 else 300
+
+    # HOG person detector (built-in, no model download needed)
+    hog = cv2.HOGDescriptor()
+    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+    SAMPLE_SEC = 5          # sample every N seconds
+    MOTION_THRESH = 0.008   # fraction of pixels that must change (0.8%)
+    PERSON_CONF = 0.4       # minimum HOG confidence to count as person
+
+    events = []
+    prev_gray = None
+    t = SAMPLE_SEC
+
+    while t < duration_sec:
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+        ret, frame = cap.read()
+        if not ret:
+            t += SAMPLE_SEC
+            continue
+
+        small = cv2.resize(frame, (320, 180))
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+        if prev_gray is not None:
+            diff = cv2.absdiff(gray, prev_gray)
+            _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
+            motion_ratio = cv2.countNonZero(thresh) / thresh.size
+
+            if motion_ratio >= MOTION_THRESH:
+                # Run HOG on a larger frame for better accuracy
+                medium = cv2.resize(frame, (480, 270))
+                rects, weights = hog.detectMultiScale(
+                    medium,
+                    winStride=(16, 16),
+                    padding=(8, 8),
+                    scale=1.05,
+                )
+                is_person = (
+                    len(rects) > 0
+                    and len(weights) > 0
+                    and float(max(weights)) >= PERSON_CONF
+                )
+                events.append({
+                    "offset_sec": round(t, 1),
+                    "motion_type": "person" if is_person else "motion",
+                })
+
+        prev_gray = gray
+        t += SAMPLE_SEC
+
+    cap.release()
+    save_motion_events(cam, segment_start_iso, events)
+    if events:
+        logger.info("Motion: %d events in %s (%d person, %d motion)",
+                    len(events), mp4_path.name,
+                    sum(1 for e in events if e["motion_type"] == "person"),
+                    sum(1 for e in events if e["motion_type"] == "motion"))
+    return len(events)
+
+
 def generate_pending_sprites(cam: str) -> int:
     """Generate sprites for all segments that don't have one yet. Returns count generated."""
     cam_dir = Path(RECORDINGS_DIR) / cam
@@ -113,18 +212,25 @@ def generate_pending_sprites(cam: str) -> int:
     for mp4 in sorted(cam_dir.glob("*.mp4")):
         sprite = mp4.with_suffix(".sprite.jpg")
         meta = mp4.with_suffix(".sprite.json")
-        if sprite.exists() and meta.exists():
-            continue
-        # Don't process the currently-being-written segment (< 60s old, < 1MB)
+        # Don't process the currently-being-written segment (< 500 KB)
         try:
             stat = mp4.stat()
             if stat.st_size < 500_000:
                 continue
         except OSError:
             continue
-        logger.info("Generating sprite for %s", mp4.name)
-        if _ffmpeg_sprite(mp4, sprite, meta):
-            generated += 1
+
+        segment_start_iso = _parse_segment_start(mp4.name)
+
+        if not (sprite.exists() and meta.exists()):
+            logger.info("Generating sprite for %s", mp4.name)
+            if _ffmpeg_sprite(mp4, sprite, meta):
+                generated += 1
+
+        # Run motion detection for segments not yet analyzed
+        if segment_start_iso:
+            detect_motion_in_segment(cam, mp4, segment_start_iso)
+
     return generated
 
 
