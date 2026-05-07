@@ -454,60 +454,73 @@ def create_app():
     @app.route("/recordings/list/<cam>")
     @login_required
     def recordings_list(cam):
-        """Proxy MediaMTX playback list API → returns segments JSON."""
-        import urllib.request, json as _json
+        """List recording segments by scanning the filesystem directly."""
+        import re, os as _os
+        from datetime import timezone as _tz, datetime as _dt
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
         mtx_cam = cam + "lo"
-        mtx_url = f"http://host.docker.internal:9996/list?path={mtx_cam}"
-        try:
-            with urllib.request.urlopen(mtx_url, timeout=5) as r:
-                data = _json.loads(r.read())
-            # Rewrite MediaMTX internal URLs to our proxy URLs
-            for seg in data:
-                seg["proxy_url"] = f"/recordings/get/{cam}?start={seg['start']}&duration={seg['duration']}"
-                seg["sprite_url"] = f"/recordings/sprite/{cam}/{seg['start'][:19].replace(':', '-')}"
-            return jsonify(data)
-        except Exception as exc:
-            return jsonify({"error": str(exc), "segments": []}), 503
+        recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
+        cam_dir = _os.path.join(recordings_dir, mtx_cam)
+        if not _os.path.isdir(cam_dir):
+            return jsonify([])
+
+        # Parse filenames: 2026-05-07_21-18-41-765667.mp4
+        pattern = re.compile(r'^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-\d+\.mp4$')
+        entries = []
+        for fname in sorted(_os.listdir(cam_dir)):
+            m = pattern.match(fname)
+            if not m:
+                continue
+            fpath = _os.path.join(cam_dir, fname)
+            try:
+                fsize = _os.path.getsize(fpath)
+            except OSError:
+                continue
+            # Skip tiny in-progress segments (< 500 KB)
+            if fsize < 500_000:
+                continue
+            date_str, hh, mm, ss = m.group(1), m.group(2), m.group(3), m.group(4)
+            start_iso = f"{date_str}T{hh}:{mm}:{ss}Z"
+            entries.append({"start_iso": start_iso, "fname": fname, "fsize": fsize})
+
+        # Calculate duration: diff to next segment start, or 300s fallback
+        segments = []
+        for i, e in enumerate(entries):
+            if i + 1 < len(entries):
+                t0 = _dt.fromisoformat(e["start_iso"].replace("Z", "+00:00"))
+                t1 = _dt.fromisoformat(entries[i+1]["start_iso"].replace("Z", "+00:00"))
+                dur = (t1 - t0).total_seconds()
+            else:
+                dur = 300.0  # last (possibly in-progress) segment
+            seg = {
+                "start":     e["start_iso"],
+                "duration":  dur,
+                "proxy_url": f"/recordings/get/{cam}?file={e['fname']}",
+                "sprite_url": f"/recordings/sprite/{cam}/{e['start_iso'][:19].replace(':', '-')}",
+            }
+            segments.append(seg)
+        return jsonify(segments)
 
     @app.route("/recordings/get/<cam>")
     @login_required
     def recordings_get(cam):
-        """Proxy MediaMTX /get endpoint — serves MP4 video segment."""
-        import urllib.request
-        from flask import Response, stream_with_context
+        """Serve an MP4 recording file directly from disk."""
+        import re, os as _os
+        from flask import send_file
         allowed = {"camera1", "camera2"}
         if cam not in allowed:
             return jsonify({"error": "invalid camera"}), 400
+        fname = request.args.get("file", "")
+        if not re.match(r'^[\d_\-]+\.mp4$', fname):
+            return jsonify({"error": "invalid filename"}), 400
         mtx_cam = cam + "lo"
-        start = request.args.get("start", "")
-        duration = request.args.get("duration", "")
-        from urllib.parse import urlencode
-        mtx_url = f"http://host.docker.internal:9996/get?" + urlencode({
-            "path": mtx_cam, "start": start, "duration": duration
-        })
-        try:
-            req = urllib.request.Request(mtx_url)
-            # Forward Range header for seeking support
-            if "Range" in request.headers:
-                req.add_header("Range", request.headers["Range"])
-            resp = urllib.request.urlopen(req, timeout=30)
-            status = resp.status
-            headers = {
-                "Content-Type": resp.headers.get("Content-Type", "video/mp4"),
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "no-cache",
-            }
-            if resp.headers.get("Content-Range"):
-                headers["Content-Range"] = resp.headers["Content-Range"]
-            if resp.headers.get("Content-Length"):
-                headers["Content-Length"] = resp.headers["Content-Length"]
-            return Response(stream_with_context(iter(lambda: resp.read(65536), b"")),
-                            status=status, headers=headers)
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 503
+        recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
+        fpath = _os.path.join(recordings_dir, mtx_cam, fname)
+        if not _os.path.isfile(fpath):
+            return jsonify({"error": "not found"}), 404
+        return send_file(fpath, mimetype="video/mp4", conditional=True)
 
     @app.route("/recordings/sprite/<cam>/<ts>")
     @login_required
