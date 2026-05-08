@@ -4,18 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Solix Monitor{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: { DEFAULT: '#f97316', dark: '#ea580c' }
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}?v={{ static_ver }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ static_ver }}" />
   {% block head %}{% endblock %}
 </head>
