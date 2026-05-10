@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Solar Battery Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#000;--card:#070708;
+  --green:#00FF7F;--amber:#FF8A1F;--violet:#C084FC;
+  --cyan:#22D9FF;--red:#FF4757;
+  --text:#F5F7FA;--dim:#54616E;--line:rgba(255,255,255,0.05);
+}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:var(--bg);color:var(--text);
+  font-family:'Space Grotesk','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:clamp(13px,1.5vw,16px);user-select:none;
+  -webkit-font-smoothing:antialiased;letter-spacing:-.005em;
+  -webkit-tap-highlight-color:transparent;cursor:none}
+
+.halo{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.halo b{position:absolute;border-radius:50%;filter:blur(120px);opacity:.18}
+.halo b:nth-child(1){width:50vmax;height:50vmax;background:var(--green);
+  top:30%;left:5%;animation:h1 30s ease-in-out infinite}
+.halo b:nth-child(2){width:40vmax;height:40vmax;background:var(--violet);
+  bottom:10%;right:5%;animation:h2 36s ease-in-out infinite}
+.halo b:nth-child(3){width:30vmax;height:30vmax;background:var(--amber);
+  top:5%;right:25%;opacity:.1;animation:h3 28s ease-in-out infinite}
+@keyframes h1{50%{transform:translate(8%,-5%)}}
+@keyframes h2{50%{transform:translate(-5%,8%)}}
+@keyframes h3{50%{transform:translate(-10%,5%)}}
+
+.scan{position:fixed;inset:0;pointer-events:none;z-index:100;
+  background:repeating-linear-gradient(0deg,transparent 0,transparent 2px,
+    rgba(255,255,255,.015) 2px,rgba(255,255,255,.015) 3px)}
+
+.offline{position:fixed;top:0;left:0;right:0;
+  background:#FF4757;color:#000;padding:clamp(6px,1vh,10px);
+  text-align:center;font-weight:700;letter-spacing:.2em;
+  font-size:clamp(11px,1.4vh,13px);text-transform:uppercase;
+  z-index:200;transform:translateY(-100%);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+.offline.show{transform:translateY(0);
+  animation:bl 1.5s ease-in-out infinite}
+@keyframes bl{50%{filter:brightness(.7)}}
+
+.app{position:relative;z-index:1;height:100vh;
+  display:grid;grid-template-rows:1fr auto;
+  gap:clamp(10px,1.4vh,16px);padding:clamp(12px,1.8vh,20px)}
+.row1{display:grid;grid-template-columns:2fr 1fr;
+  gap:clamp(10px,1.5vw,18px);min-height:0}
+
+.card{position:relative;background:var(--card);
+  border-radius:clamp(10px,1.6vh,16px);
+  padding:clamp(12px,1.6vh,18px);
+  overflow:hidden;
+  animation:cIn .55s cubic-bezier(.34,1.56,.64,1) backwards;
+  box-shadow:0 0 0 1px var(--line)}
+.card::before{content:'';position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(180deg,rgba(255,255,255,.03),transparent 30%);
+  pointer-events:none}
+@keyframes cIn{from{opacity:0;transform:translateY(14px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}}
+
+.col-left{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:clamp(10px,1.4vh,16px);
+  background:radial-gradient(circle at 50% 50%,rgba(57,255,138,.06),transparent 60%),var(--card);
+  transition:background .6s}
+.col-left.discharging{background:radial-gradient(circle at 50% 50%,rgba(255,138,31,.06),transparent 60%),var(--card)}
+.col-left.standby{background:radial-gradient(circle at 50% 50%,rgba(84,97,110,.05),transparent 60%),var(--card)}
+
+.ring{position:relative;
+  width:clamp(220px,42vh,460px);height:clamp(220px,42vh,460px);
+  display:grid;place-items:center}
+.ring svg{position:absolute;inset:0;width:100%;height:100%;
+  transform:rotate(-90deg);overflow:visible}
+.ring-bg{stroke:rgba(255,255,255,.04);stroke-width:14}
+.ring-fg{transition:stroke-dashoffset 1.4s cubic-bezier(.34,1.56,.64,1),stroke .4s,filter .4s;
+  stroke:var(--green);stroke-width:14;
+  filter:drop-shadow(0 0 18px var(--green)) drop-shadow(0 0 40px var(--green))}
+.ring-fg.discharging{stroke:var(--amber);
+  filter:drop-shadow(0 0 18px var(--amber)) drop-shadow(0 0 40px var(--amber))}
+.ring-fg.standby{stroke:var(--dim);filter:drop-shadow(0 0 8px var(--dim))}
+.ring-fg.standby-high{stroke:var(--green);filter:drop-shadow(0 0 18px var(--green)) drop-shadow(0 0 40px var(--green))}
+.ring-fg.full{stroke:var(--green);filter:drop-shadow(0 0 24px var(--green)) drop-shadow(0 0 50px var(--green))}
+
+.bolt{stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;
+  stroke-dasharray:24 504;
+  animation:bolt 2s linear infinite;
+  filter:drop-shadow(0 0 6px #fff);
+  display:none}
+.ring svg.charging .bolt{display:block}
+.bolt:nth-child(3){animation-delay:.66s}
+.bolt:nth-child(4){animation-delay:1.33s}
+@keyframes bolt{to{stroke-dashoffset:-528}}
+
+.center{position:relative;z-index:2;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:6px}
+.lab{font-size:clamp(9px,1.3vh,12px);color:var(--dim);
+  letter-spacing:.3em;text-transform:uppercase;font-weight:600}
+.soc{font-size:clamp(64px,12vh,150px);font-weight:700;line-height:.95;
+  color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.06em}
+.unit-pct{font-size:clamp(20px,4vh,42px);color:var(--dim);
+  font-weight:500;margin-left:2px}
+
+.badge{padding:clamp(6px,.9vh,9px) clamp(14px,2vw,20px);
+  border-radius:6px;background:rgba(57,255,138,.1);
+  color:var(--green);font-size:clamp(11px,1.4vh,13px);
+  letter-spacing:.18em;text-transform:uppercase;font-weight:700;
+  display:flex;align-items:center;gap:8px;
+  transition:all .3s;
+  box-shadow:inset 0 0 0 1px rgba(57,255,138,.25)}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;
+  background:currentColor;box-shadow:0 0 6px currentColor;
+  animation:bp 1.4s ease-in-out infinite}
+@keyframes bp{50%{opacity:.3}}
+.badge.discharging{background:rgba(255,138,31,.1);
+  box-shadow:inset 0 0 0 1px rgba(255,138,31,.25);color:var(--amber)}
+.badge.standby{background:rgba(84,97,110,.15);
+  box-shadow:inset 0 0 0 1px rgba(84,97,110,.4);color:var(--dim)}
+.badge.full{background:rgba(57,255,138,.18);
+  box-shadow:inset 0 0 0 1px rgba(57,255,138,.5);color:var(--green)}
+
+.remaining{color:var(--dim);font-size:clamp(11px,1.4vh,13px);
+  font-weight:500;letter-spacing:.04em}
+
+.col-right{display:flex;flex-direction:column;
+  gap:clamp(10px,1.3vh,14px);min-height:0}
+.col-right .card{flex:1;display:flex;flex-direction:column;justify-content:center}
+.col-right .metric{display:grid}
+
+.card-clock{display:flex;flex-direction:column;gap:clamp(2px,.5vh,6px)}
+.time{font-size:clamp(46px,8vh,92px);font-weight:700;line-height:1;
+  color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.05em}
+.time .col{color:var(--cyan);animation:bp 1s ease-in-out infinite}
+.date{color:var(--dim);font-size:clamp(11px,1.4vh,13px);
+  letter-spacing:.04em;text-transform:capitalize;font-weight:500}
+
+.metric{display:grid;grid-template-columns:auto 1fr auto;
+  align-items:center;gap:clamp(10px,1.5vw,16px);
+  position:relative}
+.mi{width:clamp(34px,4.8vh,44px);height:clamp(34px,4.8vh,44px);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.03);
+  color:var(--accent,var(--green));
+  position:relative}
+.mi::before{content:'';position:absolute;inset:0;border-radius:inherit;
+  box-shadow:inset 0 0 0 1px currentColor;opacity:.25}
+.mi svg{width:55%;height:55%;stroke-width:2;fill:none;stroke:currentColor}
+.mb{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ml{font-size:clamp(9px,1.2vh,11px);color:var(--dim);
+  letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+.mv{font-size:clamp(26px,4.8vh,38px);font-weight:700;line-height:1;
+  color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mv .u{color:var(--dim);font-size:.5em;margin-left:3px;font-weight:500}
+.ma{text-align:right;color:var(--dim);font-size:clamp(10px,1.3vh,12px);
+  line-height:1.4;font-weight:500}
+.ma strong{color:var(--accent,var(--green));display:block;font-weight:700}
+
+.acc-green{--accent:var(--green)}
+.acc-amber{--accent:var(--amber)}
+.acc-violet{--accent:var(--violet)}
+
+.dot{display:inline-block;width:clamp(12px,1.8vh,16px);
+  height:clamp(12px,1.8vh,16px);border-radius:50%;
+  box-shadow:0 0 10px currentColor;
+  animation:pp 2s ease-in-out infinite;
+  transition:background .4s,color .4s}
+.dot.cool{color:var(--violet);background:var(--violet)}
+.dot.warm{color:var(--amber);background:var(--amber)}
+.dot.hot{color:var(--red);background:var(--red)}
+@keyframes pp{50%{transform:scale(1.3);filter:brightness(1.3)}}
+
+.row2{height:clamp(110px,17vh,180px);
+  padding:clamp(12px,1.6vh,18px);
+  display:flex;flex-direction:column;gap:clamp(4px,.6vh,8px)}
+.ch{display:flex;justify-content:space-between;align-items:center}
+.ct{font-size:clamp(10px,1.3vh,12px);color:var(--dim);
+  letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+.lg{display:flex;gap:clamp(12px,1.8vw,20px)}
+.li{display:flex;align-items:center;gap:8px;
+  font-size:clamp(10px,1.3vh,12px);color:var(--text);font-weight:500}
+.ld{width:10px;height:10px;border-radius:2px;
+  box-shadow:0 0 6px currentColor}
+.cw{flex:1;position:relative;min-height:0}
+canvas{width:100%;height:100%;display:block}
+
+.col-right .card:nth-child(1){animation-delay:.08s}
+.col-right .card:nth-child(2){animation-delay:.14s}
+.col-right .card:nth-child(3){animation-delay:.2s}
+.col-right .card:nth-child(4){animation-delay:.26s}
+.col-left{animation-delay:.04s}
+.row2{animation-delay:.32s}
+</style>
+</head>
+<body>
+
+<div class="halo"><b></b><b></b><b></b></div>
+<div class="scan"></div>
+<div class="offline" id="offline">⚠ Device offline</div>
+
+<div class="app">
+  <div class="row1">
+    <div class="card col-left" id="col-left">
+      <div class="ring">
+        <svg viewBox="0 0 200 200" id="ring-svg">
+          <circle cx="100" cy="100" r="84" fill="none" class="ring-bg"/>
+          <circle cx="100" cy="100" r="84" fill="none" stroke-linecap="round"
+            class="ring-fg" id="ring" stroke-dasharray="528" stroke-dashoffset="528"/>
+          <circle cx="100" cy="100" r="84" class="bolt"/>
+          <circle cx="100" cy="100" r="84" class="bolt"/>
+          <circle cx="100" cy="100" r="84" class="bolt"/>
+        </svg>
+        <div class="center">
+          <div class="lab">State of Charge</div>
+          <div><span class="soc" id="soc">--</span><span class="unit-pct">%</span></div>
+        </div>
+      </div>
+      <div class="badge" id="badge">—</div>
+      <div class="remaining" id="remaining">— Wh remaining</div>
+    </div>
+
+    <div class="col-right">
+      <div class="card card-clock">
+        <div class="time" id="time">--<span class="col">:</span>--</div>
+        <div class="date" id="date">—</div>
+      </div>
+
+      <div class="card metric acc-green">
+        <div class="mi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></div>
+        <div class="mb">
+          <div class="ml">Solar Input</div>
+          <div><span class="mv" id="solar">0</span><span class="u">W</span></div>
+        </div>
+        <div class="ma">Azi<strong id="solar-today">— kWh</strong></div>
+      </div>
+
+      <div class="card metric acc-amber">
+        <div class="mi"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8M9 21V8M14 21V8M19 21V8M3 8l9-5 9 5"/></svg></div>
+        <div class="mb">
+          <div class="ml">Total Output</div>
+          <div><span class="mv" id="output">0</span><span class="u">W</span></div>
+        </div>
+        <div class="ma">Azi<strong id="output-today">— kWh</strong></div>
+      </div>
+
+      <div class="card metric acc-violet">
+        <div class="mi"><svg viewBox="0 0 24 24"><path d="M14 4a2 2 0 0 0-4 0v10a4 4 0 1 0 4 0V4z"/><circle cx="12" cy="17" r="1.4" fill="currentColor"/></svg></div>
+        <div class="mb">
+          <div class="ml">Battery Temp</div>
+          <div><span class="mv" id="temp">0</span><span class="u">°C</span></div>
+        </div>
+        <div class="ma"><span class="dot cool" id="dot"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row2 card">
+    <div class="ch">
+      <span class="ct">Last 60 min · Power flow</span>
+      <div class="lg">
+        <div class="li"><span class="ld" style="background:var(--green);color:var(--green)"></span>Solar</div>
+        <div class="li"><span class="ld" style="background:var(--amber);color:var(--amber)"></span>Output</div>
+      </div>
+    </div>
+    <div class="cw"><canvas id="chart"></canvas></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const POLL_CURRENT_MS = 10_000;
+const POLL_READINGS_MS = 60_000;
+const CLOCK_TICK_MS = 10_000;
+const FETCH_TIMEOUT_MS = 8_000;
+
+const STATUS_LABEL = {
+  charging: 'Charging',
+  discharging: 'Discharging',
+  standby: 'Standby',
+  full: 'Full',
+};
+
+const DAYS_RO = ['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'];
+const MONTHS_RO = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie',
+                   'Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+
+const state = {
+  battery_soc: 0,
+  battery_wh: 0,
+  charging_status: 'standby',
+  solar_power_w: 0,
+  total_out_w: 0,
+  battery_temp: 0,
+  solar_today_kwh: 0,
+  discharge_today_kwh: 0,
+  device_online: false,
+};
+
+let chartData = [];
+const prev = { soc: 0, solar: 0, output: 0, temp: 0 };
+
+const $ = (id) => document.getElementById(id);
+
+function tween(el, from, to, dur = 900, fmt = v => Math.round(v)) {
+  const start = performance.now();
+  function frame(now) {
+    const t = Math.min(1, (now - start) / dur);
+    const e = t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+    el.textContent = fmt(from + (to - from) * e);
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function render() {
+  const C = 2 * Math.PI * 84;
+  const ring = $('ring');
+  ring.setAttribute('stroke-dasharray', C);
+  ring.setAttribute('stroke-dashoffset', C * (1 - state.battery_soc / 100));
+  ring.classList.remove('charging', 'discharging', 'full', 'standby', 'standby-high');
+  const isStandbyHigh = state.charging_status === 'standby' && state.battery_soc > 50;
+  ring.classList.add(isStandbyHigh ? 'standby-high' : state.charging_status);
+
+  const svg = $('ring-svg');
+  svg.classList.toggle('charging', state.charging_status === 'charging');
+
+  const left = $('col-left');
+  left.classList.remove('discharging', 'standby');
+  if (state.charging_status === 'discharging') left.classList.add('discharging');
+  else if (state.charging_status === 'standby') left.classList.add('standby');
+
+  tween($('soc'), prev.soc, state.battery_soc);
+  prev.soc = state.battery_soc;
+
+  const badge = $('badge');
+  badge.className = 'badge ' + state.charging_status;
+  badge.textContent = STATUS_LABEL[state.charging_status] || '—';
+
+  $('remaining').textContent = state.battery_wh.toLocaleString() + ' Wh remaining';
+
+  tween($('solar'), prev.solar, state.solar_power_w);
+  prev.solar = state.solar_power_w;
+  $('solar-today').textContent = state.solar_today_kwh.toFixed(2) + ' kWh';
+
+  tween($('output'), prev.output, state.total_out_w);
+  prev.output = state.total_out_w;
+  $('output-today').textContent = state.discharge_today_kwh.toFixed(2) + ' kWh';
+
+  tween($('temp'), prev.temp, state.battery_temp);
+  prev.temp = state.battery_temp;
+  const dot = $('dot');
+  dot.className = 'dot ' + (state.battery_temp < 30 ? 'cool' : state.battery_temp < 45 ? 'warm' : 'hot');
+
+  $('offline').classList.toggle('show', !state.device_online);
+}
+
+function updateClock() {
+  const n = new Date();
+  $('time').innerHTML =
+    String(n.getHours()).padStart(2, '0') +
+    '<span class="col">:</span>' +
+    String(n.getMinutes()).padStart(2, '0');
+  $('date').textContent =
+    DAYS_RO[n.getDay()] + ', ' + n.getDate() + ' ' + MONTHS_RO[n.getMonth()];
+}
+
+function drawChart() {
+  const c = $('chart');
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return;
+  c.width = r.width * dpr;
+  c.height = r.height * dpr;
+  const x = c.getContext('2d');
+  x.scale(dpr, dpr);
+  const W = r.width, H = r.height;
+  const pad = { l: 6, r: 6, t: 6, b: 4 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  if (!chartData.length) {
+    x.fillStyle = 'rgba(255,255,255,.18)';
+    x.font = '500 11px Space Grotesk, sans-serif';
+    x.textAlign = 'center';
+    x.fillText('Waiting for data…', W / 2, H / 2);
+    return;
+  }
+
+  const max = Math.max(...chartData.flatMap(d => [d.solar, d.output]), 100);
+  const gw = iW / chartData.length;
+  const bw = (gw - 6) / 2;
+
+  chartData.forEach((d, i) => {
+    const xx = pad.l + i * gw + 3;
+    const sH = Math.max(2, (d.solar / max) * iH);
+    const oH = Math.max(2, (d.output / max) * iH);
+    x.fillStyle = 'rgba(57,255,138,.9)';
+    x.fillRect(xx, pad.t + iH - sH, bw, sH);
+    x.fillStyle = 'rgba(255,138,31,.9)';
+    x.fillRect(xx + bw + 2, pad.t + iH - oH, bw, oH);
+  });
+}
+
+async function fetchJSON(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function num(v, d = 0) { return Number.isFinite(+v) ? +v : d; }
+
+async function pollCurrent() {
+  try {
+    const d = await fetchJSON('/api/current');
+    state.battery_soc       = clamp(num(d.battery_soc), 0, 100);
+    state.battery_wh        = Math.round(num(d.battery_wh));
+    state.charging_status   = STATUS_LABEL[d.charging_status] ? d.charging_status : 'standby';
+    state.solar_power_w     = Math.round(num(d.solar_power_w));
+    state.total_out_w       = Math.round(num(d.total_out_w));
+    state.battery_temp      = Math.round(num(d.battery_temp));
+    state.solar_today_kwh   = num(d.solar_today_kwh);
+    state.discharge_today_kwh = num(d.discharge_today_kwh);
+    state.device_online     = d.device_online !== false;
+  } catch (e) {
+    state.device_online = false;
+  }
+  render();
+}
+
+async function pollReadings() {
+  try {
+    const d = await fetchJSON('/api/readings?hours=1&step=300');
+    if (Array.isArray(d)) {
+      chartData = d.map(r => ({
+        solar: num(r.solar_power_w),
+        output: num(r.total_out_w),
+      }));
+      drawChart();
+    }
+  } catch (e) {
+    // keep last good chart data on transient failure
+  }
+}
+
+function init() {
+  updateClock();
+  setInterval(updateClock, CLOCK_TICK_MS);
+
+  render();
+  drawChart();
+
+  pollCurrent();
+  pollReadings();
+  setInterval(pollCurrent, POLL_CURRENT_MS);
+  setInterval(pollReadings, POLL_READINGS_MS);
+
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(drawChart);
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { pollCurrent(); pollReadings(); }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

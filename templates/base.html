@@ -43,6 +43,14 @@
         Dashboard
       </a>
 
+      <a href="{{ url_for('status') }}"
+         class="nav-link {% if request.endpoint == 'status' %}active{% endif %}">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        Status
+      </a>
+
       <a href="{{ url_for('history') }}"
          class="nav-link {% if request.endpoint == 'history' %}active{% endif %}">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -61,6 +69,7 @@
         Cameras
       </a>
 
+      {% if session.get('user_role') != 'guest' %}
       <a href="{{ url_for('playback') }}"
          class="nav-link {% if request.endpoint == 'playback' %}active{% endif %}">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -70,7 +79,9 @@
         </svg>
         Playback
       </a>
+      {% endif %}
 
+      {% if session.get('user_role') == 'admin' %}
       <p class="nav-section" style="margin-top:0.5rem;">System</p>
 
       <a href="{{ url_for('admin') }}"
@@ -82,10 +93,22 @@
         </svg>
         Settings
       </a>
+      {% endif %}
     </nav>
 
     <!-- Footer / logout -->
     <div style="border-top:1px solid #152035;" class="px-3 py-3">
+      {% if session.get('username') %}
+      <div style="padding:6px 10px 8px; display:flex; align-items:center; gap:8px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:#1e3050; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-weight:700; font-size:0.75rem; flex-shrink:0;">
+          {{ session.get('username', '?')[0].upper() }}
+        </div>
+        <div style="flex:1; min-width:0;">
+          <p style="color:#94a3b8; font-size:0.75rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ session.get('username') }}</p>
+          <p style="color:#334155; font-size:0.65rem;">{{ session.get('user_role', '') }}</p>
+        </div>
+      </div>
+      {% endif %}
       <a href="{{ url_for('logout') }}" class="nav-link" style="color:#3d5a80;">
         <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round"

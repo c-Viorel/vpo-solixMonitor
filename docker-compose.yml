@@ -32,9 +32,26 @@ services:
     container_name: solix-mediamtx
     restart: unless-stopped
     network_mode: host
+    volumes:
+      - /volume2/docker/solix-monitor/recordings:/recordings
+      - /volume2/docker/solix-monitor/mediamtx.yml:/mediamtx.yml
     environment:
+      - MTX_PLAYBACK=yes
+      - MTX_PATHDEFAULTS_RECORDPATH=/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+      - MTX_PATHDEFAULTS_RECORDSEGMENTDURATION=1m
+      - MTX_PATHDEFAULTS_RECORDDELETEAFTER=24h
       - MTX_PATHS_CAMERA1_SOURCE=${CAMERA1_RTSP_URL:-}
+      - MTX_PATHS_CAMERA1_RECORD=yes
+      - MTX_PATHS_CAMERA1_SOURCEONDEMAND=no
+      - MTX_PATHS_CAMERA1LO_SOURCE=${CAMERA1LO_RTSP_URL:-}
+      - MTX_PATHS_CAMERA1LO_RECORD=no
+      - MTX_PATHS_CAMERA1LO_SOURCEONDEMAND=yes
       - MTX_PATHS_CAMERA2_SOURCE=${CAMERA2_RTSP_URL:-}
+      - MTX_PATHS_CAMERA2_RECORD=yes
+      - MTX_PATHS_CAMERA2_SOURCEONDEMAND=no
+      - MTX_PATHS_CAMERA2LO_SOURCE=${CAMERA2LO_RTSP_URL:-}
+      - MTX_PATHS_CAMERA2LO_RECORD=no
+      - MTX_PATHS_CAMERA2LO_SOURCEONDEMAND=yes
     profiles:
       - cameras
 

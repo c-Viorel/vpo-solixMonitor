@@ -97,6 +97,13 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_readings_ts
                 ON readings (timestamp);
+
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'user'  -- 'admin', 'user', 'guest'
+            );
         """)
 
         # One-time migration: wipe raw_json column (was filling up disk)
@@ -337,6 +344,84 @@ def delete_setting(key: str) -> None:
     with conn:
         conn.execute("DELETE FROM settings WHERE key = ?", (key,))
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+
+def get_all_users() -> list[dict]:
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, username, role FROM users ORDER BY role, username"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_user_by_username(username: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, role FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_user(username: str, password_hash: str, role: str = "user") -> int:
+    conn = get_db()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username, password_hash, role),
+        )
+    conn.close()
+    return cur.lastrowid
+
+
+def update_user_password(user_id: int, password_hash: str) -> None:
+    conn = get_db()
+    with conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id),
+        )
+    conn.close()
+
+
+def update_user_role(user_id: int, role: str) -> None:
+    conn = get_db()
+    with conn:
+        conn.execute(
+            "UPDATE users SET role = ? WHERE id = ?", (role, user_id)
+        )
+    conn.close()
+
+
+def delete_user(user_id: int) -> None:
+    conn = get_db()
+    with conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.close()
+
+
+def count_admins() -> int:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM users WHERE role = 'admin'"
+    ).fetchone()
+    conn.close()
+    return row["n"] if row else 0
 
 
 # ---------------------------------------------------------------------------

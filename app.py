@@ -82,20 +82,53 @@ def create_app():
     # Auth helpers
     # -----------------------------------------------------------------------
 
+    ROLE_HIERARCHY = {"admin": 3, "user": 2, "guest": 1}
+
     def login_required(f):
+        """Any authenticated user."""
         @wraps(f)
         def decorated(*args, **kwargs):
-            if not session.get("admin_logged_in"):
-                return redirect(url_for("login"))
+            if not session.get("user_id"):
+                return redirect(url_for("login", next=request.path))
             return f(*args, **kwargs)
         return decorated
 
-    def _get_admin_hash():
-        from db import get_setting
-        return get_setting("admin_password_hash")
+    def admin_required(f):
+        """Admin role only."""
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get("user_id"):
+                return redirect(url_for("login", next=request.path))
+            if session.get("user_role") != "admin":
+                flash("Acces refuzat. Necesită rol de administrator.", "error")
+                return redirect(url_for("dashboard"))
+            return f(*args, **kwargs)
+        return decorated
 
-    def _admin_configured():
-        return bool(_get_admin_hash())
+    def playback_required(f):
+        """Admin or user role (not guest)."""
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get("user_id"):
+                return redirect(url_for("login", next=request.path))
+            if session.get("user_role") == "guest":
+                flash("Acces refuzat.", "error")
+                return redirect(url_for("dashboard"))
+            return f(*args, **kwargs)
+        return decorated
+
+    def _no_users_configured():
+        from db import get_all_users
+        return len(get_all_users()) == 0
+
+    def _migrate_legacy_admin():
+        """If old admin_password_hash exists but no users, create first admin user."""
+        from db import get_setting, get_all_users, create_user
+        if get_all_users():
+            return
+        legacy_hash = get_setting("admin_password_hash")
+        if legacy_hash:
+            create_user("Admin", legacy_hash, "admin")
 
     # -----------------------------------------------------------------------
     # Public routes
@@ -148,37 +181,60 @@ def create_app():
     def history():
         return render_template("history.html")
 
+    @app.route("/status")
+    def status():
+        return render_template("status.html")
+
     # -----------------------------------------------------------------------
     # Auth routes
     # -----------------------------------------------------------------------
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        if session.get("admin_logged_in"):
-            return redirect(url_for("admin"))
+        from db import get_all_users, get_user_by_username, create_user
+
+        _migrate_legacy_admin()
+
+        if session.get("user_id"):
+            next_url = request.args.get("next") or url_for("dashboard")
+            return redirect(next_url)
+
+        users = get_all_users()
+        first_time = len(users) == 0
 
         if request.method == "POST":
+            next_url = request.form.get("next") or url_for("dashboard")
+            username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
 
-            if not _admin_configured():
-                # First-time setup: the submitted password becomes the admin password.
-                from db import set_setting
-                set_setting("admin_password_hash", generate_password_hash(password))
-                session["admin_logged_in"] = True
-                session.permanent = True
-                flash("Admin password set. Welcome!", "success")
-                return redirect(url_for("admin"))
+            if first_time:
+                # First-time setup: create initial admin
+                if len(password) < 8:
+                    flash("Parola trebuie să aibă cel puțin 8 caractere.", "error")
+                    return render_template("login.html", users=users, first_time=True,
+                                           next=request.args.get("next", ""))
+                create_user(username or "Admin", generate_password_hash(password), "admin")
+                user = get_user_by_username(username or "Admin")
+                session["user_id"]   = user["id"]
+                session["user_role"] = user["role"]
+                session["username"]  = user["username"]
+                session.permanent    = True
+                flash("Cont de administrator creat. Bine ai venit!", "success")
+                return redirect(next_url)
 
-            stored_hash = _get_admin_hash()
-            if stored_hash and check_password_hash(stored_hash, password):
-                session["admin_logged_in"] = True
-                session.permanent = True
-                return redirect(url_for("admin"))
+            user = get_user_by_username(username)
+            if user and check_password_hash(user["password_hash"], password):
+                session["user_id"]   = user["id"]
+                session["user_role"] = user["role"]
+                session["username"]  = user["username"]
+                session.permanent    = True
+                return redirect(next_url)
 
-            flash("Invalid password.", "error")
+            flash("Parolă incorectă.", "error")
 
-        first_time = not _admin_configured()
-        return render_template("login.html", first_time=first_time)
+        return render_template("login.html", users=users, first_time=first_time,
+                               next=request.args.get("next", ""),
+                               selected_user=request.args.get("user", ""))
 
     @app.route("/logout")
     def logout():
@@ -190,9 +246,9 @@ def create_app():
     # -----------------------------------------------------------------------
 
     @app.route("/admin")
-    @login_required
+    @admin_required
     def admin():
-        from db import get_setting
+        from db import get_setting, get_all_users
         from config import Config
 
         # Show masked email (first 3 chars + *** + domain) for display.
@@ -224,10 +280,12 @@ def create_app():
             last_reading=last_reading,
             dvr_retention=dvr_retention,
             dvr_quality=dvr_quality,
+            all_users=get_all_users(),
+            current_user_id=session.get("user_id"),
         )
 
     @app.route("/admin/save-credentials", methods=["POST"])
-    @login_required
+    @admin_required
     def admin_save_credentials():
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "").strip()
@@ -258,32 +316,14 @@ def create_app():
         return redirect(url_for("admin"))
 
     @app.route("/admin/save-password", methods=["POST"])
-    @login_required
+    @admin_required
     def admin_save_password():
-        current = request.form.get("current_password", "")
-        new_pw = request.form.get("new_password", "")
-        confirm = request.form.get("confirm_password", "")
-
-        stored_hash = _get_admin_hash()
-        if not check_password_hash(stored_hash, current):
-            flash("Current password is incorrect.", "error")
-            return redirect(url_for("admin"))
-
-        if len(new_pw) < 8:
-            flash("New password must be at least 8 characters.", "error")
-            return redirect(url_for("admin"))
-
-        if new_pw != confirm:
-            flash("Passwords do not match.", "error")
-            return redirect(url_for("admin"))
-
-        from db import set_setting
-        set_setting("admin_password_hash", generate_password_hash(new_pw))
-        flash("Admin password updated.", "success")
+        """Deprecated — kept for backward compatibility. Use /admin/users/<id>/set-password."""
+        flash("Folosește secțiunea Useri pentru a schimba parola.", "error")
         return redirect(url_for("admin"))
 
     @app.route("/admin/trigger-collect", methods=["POST"])
-    @login_required
+    @admin_required
     def admin_trigger_collect():
         from db import get_setting
         enc_email = get_setting("anker_email_enc")
@@ -300,7 +340,7 @@ def create_app():
         return redirect(url_for("admin"))
 
     @app.route("/admin/clear-data", methods=["POST"])
-    @login_required
+    @admin_required
     def admin_clear_data():
         confirm = request.form.get("confirm", "")
         if confirm != "DELETE":
@@ -316,7 +356,7 @@ def create_app():
         return redirect(url_for("admin"))
 
     @app.route("/admin/dvr-settings", methods=["POST"])
-    @login_required
+    @admin_required
     def admin_dvr_settings():
         from db import set_setting
         retention = request.form.get("dvr_retention", "24")
@@ -331,7 +371,7 @@ def create_app():
         return redirect(url_for("admin"))
 
     @app.route("/api/dvr-storage")
-    @login_required
+    @admin_required
     def api_dvr_storage():
         import os as _os
         recordings_dir = _os.environ.get("RECORDINGS_DIR", "/recordings")
@@ -361,7 +401,7 @@ def create_app():
         return jsonify(result)
 
     @app.route("/api/test-credentials", methods=["POST"])
-    @login_required
+    @admin_required
     def api_test_credentials():
         data = request.get_json(silent=True) or {}
         email   = data.get("email", "").strip()
@@ -376,6 +416,92 @@ def create_app():
         from collector import test_connection
         result = test_connection(email, password, country)
         return jsonify(result)
+
+    # -----------------------------------------------------------------------
+    # User management routes (admin only)
+    # -----------------------------------------------------------------------
+
+    @app.route("/admin/users/create", methods=["POST"])
+    @admin_required
+    def admin_user_create():
+        from db import get_user_by_username, create_user
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        role     = request.form.get("role", "user")
+
+        if not username or not password:
+            flash("Numele de utilizator și parola sunt obligatorii.", "error")
+            return redirect(url_for("admin") + "#users")
+        if len(password) < 8:
+            flash("Parola trebuie să aibă cel puțin 8 caractere.", "error")
+            return redirect(url_for("admin") + "#users")
+        if role not in ("admin", "user", "guest"):
+            role = "user"
+        if get_user_by_username(username):
+            flash(f"Utilizatorul '{username}' există deja.", "error")
+            return redirect(url_for("admin") + "#users")
+
+        create_user(username, generate_password_hash(password), role)
+        flash(f"Utilizatorul '{username}' ({role}) a fost creat.", "success")
+        return redirect(url_for("admin") + "#users")
+
+    @app.route("/admin/users/<int:user_id>/set-password", methods=["POST"])
+    @admin_required
+    def admin_user_set_password(user_id):
+        from db import get_user_by_id, update_user_password
+        new_pw  = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        user = get_user_by_id(user_id)
+        if not user:
+            flash("Utilizatorul nu există.", "error")
+            return redirect(url_for("admin") + "#users")
+        if len(new_pw) < 8:
+            flash("Parola trebuie să aibă cel puțin 8 caractere.", "error")
+            return redirect(url_for("admin") + "#users")
+        if new_pw != confirm:
+            flash("Parolele nu coincid.", "error")
+            return redirect(url_for("admin") + "#users")
+        update_user_password(user_id, generate_password_hash(new_pw))
+        flash(f"Parola pentru '{user['username']}' a fost actualizată.", "success")
+        return redirect(url_for("admin") + "#users")
+
+    @app.route("/admin/users/<int:user_id>/set-role", methods=["POST"])
+    @admin_required
+    def admin_user_set_role(user_id):
+        from db import get_user_by_id, update_user_role, count_admins
+        role = request.form.get("role", "user")
+        user = get_user_by_id(user_id)
+        if not user:
+            flash("Utilizatorul nu există.", "error")
+            return redirect(url_for("admin") + "#users")
+        if role not in ("admin", "user", "guest"):
+            role = "user"
+        # Prevent removing the last admin
+        if user["role"] == "admin" and role != "admin" and count_admins() <= 1:
+            flash("Nu poți retrograda singurul administrator.", "error")
+            return redirect(url_for("admin") + "#users")
+        update_user_role(user_id, role)
+        flash(f"Rolul lui '{user['username']}' a fost schimbat în {role}.", "success")
+        return redirect(url_for("admin") + "#users")
+
+    @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_user_delete(user_id):
+        from db import get_user_by_id, delete_user, count_admins
+        user = get_user_by_id(user_id)
+        if not user:
+            flash("Utilizatorul nu există.", "error")
+            return redirect(url_for("admin") + "#users")
+        if user["role"] == "admin" and count_admins() <= 1:
+            flash("Nu poți șterge singurul administrator.", "error")
+            return redirect(url_for("admin") + "#users")
+        # Prevent self-deletion
+        if user_id == session.get("user_id"):
+            flash("Nu te poți șterge pe tine însuți.", "error")
+            return redirect(url_for("admin") + "#users")
+        delete_user(user_id)
+        flash(f"Utilizatorul '{user['username']}' a fost șters.", "success")
+        return redirect(url_for("admin") + "#users")
 
     # -----------------------------------------------------------------------
     # JSON API
@@ -437,7 +563,7 @@ def create_app():
 
     @app.route("/playback")
     @app.route("/playback/<cam>")
-    @login_required
+    @playback_required
     def playback(cam="camera1"):
         """DVR playback page — 24h timeline with thumbnail scrubbing."""
         enabled = os.environ.get("CAMERAS_ENABLED", "false").lower() == "true"
@@ -467,7 +593,7 @@ def create_app():
         return cam + "lo"
 
     @app.route("/recordings/list/<cam>")
-    @login_required
+    @playback_required
     def recordings_list(cam):
         """List recording segments by scanning the filesystem directly."""
         import re, os as _os
@@ -484,6 +610,9 @@ def create_app():
         # Parse filenames: 2026-05-07_21-18-41-765667.mp4
         pattern = re.compile(r'^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-\d+\.mp4$')
         entries = []
+        now_ts = _os.path.getmtime(_os.path.join(cam_dir, '.')) if True else 0
+        import time as _time
+        now_ts = _time.time()
         for fname in sorted(_os.listdir(cam_dir)):
             m = pattern.match(fname)
             if not m:
@@ -491,10 +620,14 @@ def create_app():
             fpath = _os.path.join(cam_dir, fname)
             try:
                 fsize = _os.path.getsize(fpath)
+                fmtime = _os.path.getmtime(fpath)
             except OSError:
                 continue
-            # Skip tiny in-progress segments (< 500 KB)
+            # Skip tiny segments (< 500 KB)
             if fsize < 500_000:
+                continue
+            # Skip files still being written (modified in last 30 seconds)
+            if now_ts - fmtime < 30:
                 continue
             date_str, hh, mm, ss = m.group(1), m.group(2), m.group(3), m.group(4)
             start_iso = f"{date_str}T{hh}:{mm}:{ss}Z"
@@ -519,7 +652,7 @@ def create_app():
         return jsonify(segments), 200, {"Cache-Control": "no-store"}
 
     @app.route("/recordings/get/<cam>")
-    @login_required
+    @playback_required
     def recordings_get(cam):
         """Serve an MP4 recording file directly from disk."""
         import re, os as _os
@@ -543,7 +676,7 @@ def create_app():
         return send_file(fpath, mimetype="video/mp4", conditional=True)
 
     @app.route("/recordings/sprite/<cam>/<ts>")
-    @login_required
+    @playback_required
     def recordings_sprite(cam, ts):
         """Serve pre-generated thumbnail sprite for a recording segment."""
         import re, glob as _glob, json as _json
@@ -574,7 +707,7 @@ def create_app():
         return resp
 
     @app.route("/recordings/sprite-meta/<cam>/<ts>")
-    @login_required
+    @playback_required
     def recordings_sprite_meta(cam, ts):
         """Return sprite metadata JSON."""
         import re, json as _json, glob as _glob
@@ -591,7 +724,7 @@ def create_app():
             return jsonify(_json.load(f))
 
     @app.route("/recordings/motion/<cam>")
-    @login_required
+    @playback_required
     def recordings_motion(cam):
         """Return motion detection events for the last 24 h of recordings."""
         from db import get_motion_events
@@ -603,7 +736,7 @@ def create_app():
         return jsonify(events), 200, {"Cache-Control": "no-store"}
 
     @app.route("/recordings/motion-status/<cam>")
-    @login_required
+    @playback_required
     def recordings_motion_status(cam):
         """Return per-segment motion analysis status dict."""
         from db import get_motion_status
@@ -615,7 +748,7 @@ def create_app():
         return jsonify(status), 200, {"Cache-Control": "no-store"}
 
     @app.route("/recordings/analyze/<cam>", methods=["POST"])
-    @login_required
+    @playback_required
     def recordings_analyze(cam):
         """Trigger motion analysis for all unanalyzed segments of a camera."""
         import threading
@@ -639,7 +772,7 @@ def create_app():
         return jsonify({"status": "started"}), 202
 
     @app.route("/recordings/analyze-status/<cam>")
-    @login_required
+    @playback_required
     def recordings_analyze_status(cam):
         """Check if analysis is currently running for a camera (DB-backed, worker-safe)."""
         from db import get_setting
@@ -689,7 +822,7 @@ def create_app():
         return jsonify({"status": "deploy triggered"}), 202
 
     @app.route("/api/debug-device")
-    @login_required
+    @admin_required
     def api_debug_device():
         """Fetch raw device data from Anker API and return it as JSON (admin only)."""
         from db import get_setting

@@ -282,6 +282,124 @@
   </div>
 
 </div>
+
+<!-- ── Users section ──────────────────────────────────────────────── -->
+<div id="users" class="mt-5">
+  <div class="card">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 style="color:#f1f5f9; font-size:0.95rem; font-weight:600;">Useri</h2>
+        <p style="color:#64748b; font-size:0.78rem; margin-top:2px;">Gestionează utilizatorii și rolurile lor de acces.</p>
+      </div>
+    </div>
+
+    <!-- Role legend -->
+    <div style="display:flex; gap:10px; margin-bottom:1.2rem; flex-wrap:wrap;">
+      <span style="background:rgba(239,68,68,0.12); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600;">admin — vede tot</span>
+      <span style="background:rgba(99,102,241,0.12); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3); border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600;">user — fără setări</span>
+      <span style="background:rgba(100,116,139,0.12); color:#94a3b8; border:1px solid rgba(100,116,139,0.3); border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600;">guest — fără setări & playback</span>
+    </div>
+
+    <!-- User list -->
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:1.5rem;">
+      {% for u in all_users %}
+      <div style="background:#0a1526; border:1px solid #1e3050; border-radius:10px; padding:0.75rem 1rem; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <!-- Avatar -->
+        <div style="width:36px; height:36px; border-radius:50%; background:#1e3050; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-weight:700; font-size:0.9rem; flex-shrink:0;">
+          {{ u.username[0].upper() }}
+        </div>
+        <!-- Name + role -->
+        <div style="flex:1; min-width:120px;">
+          <div style="color:#e2e8f0; font-weight:600; font-size:0.88rem;">{{ u.username }}</div>
+          <span style="font-size:0.7rem; font-weight:600; padding:1px 8px; border-radius:20px;
+            {% if u.role == 'admin' %}background:rgba(239,68,68,0.12); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);
+            {% elif u.role == 'user' %}background:rgba(99,102,241,0.12); color:#a5b4fc; border:1px solid rgba(99,102,241,0.3);
+            {% else %}background:rgba(100,116,139,0.12); color:#94a3b8; border:1px solid rgba(100,116,139,0.3);{% endif %}">
+            {{ u.role }}
+          </span>
+        </div>
+        <!-- Actions -->
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <!-- Change role -->
+          <form method="POST" action="/admin/users/{{ u.id }}/set-role" style="display:flex; gap:4px; align-items:center;">
+            <select name="role" style="background:#0d1a2d; border:1px solid #1e3a5f; color:#94a3b8; border-radius:6px; padding:3px 6px; font-size:0.72rem;">
+              <option value="admin" {% if u.role=='admin' %}selected{% endif %}>admin</option>
+              <option value="user"  {% if u.role=='user'  %}selected{% endif %}>user</option>
+              <option value="guest" {% if u.role=='guest' %}selected{% endif %}>guest</option>
+            </select>
+            <button type="submit" style="padding:3px 8px; border-radius:5px; background:#1e3050; border:1px solid #2d4a70; color:#64748b; font-size:0.72rem; cursor:pointer;">Rol</button>
+          </form>
+          <!-- Change password -->
+          <button type="button" onclick="togglePwForm({{ u.id }})"
+                  style="padding:3px 8px; border-radius:5px; background:#1e3050; border:1px solid #2d4a70; color:#64748b; font-size:0.72rem; cursor:pointer;">
+            🔑 Parolă
+          </button>
+          <!-- Delete -->
+          {% if u.id != current_user_id %}
+          <form method="POST" action="/admin/users/{{ u.id }}/delete"
+                onsubmit="return confirm('Ștergi utilizatorul {{ u.username }}?')">
+            <button type="submit" style="padding:3px 8px; border-radius:5px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); color:#f87171; font-size:0.72rem; cursor:pointer;">✕</button>
+          </form>
+          {% endif %}
+        </div>
+        <!-- Password change form (hidden) -->
+        <div id="pw-form-{{ u.id }}" style="display:none; width:100%; margin-top:8px; padding-top:8px; border-top:1px solid #1e3050;">
+          <form method="POST" action="/admin/users/{{ u.id }}/set-password" style="display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end;">
+            <div>
+              <label style="color:#64748b; font-size:0.7rem; display:block; margin-bottom:2px;">Parolă nouă</label>
+              <input type="password" name="new_password" required minlength="8"
+                     style="background:#0d1a2d; border:1px solid #1e3a5f; color:#e2e8f0; border-radius:6px; padding:4px 8px; font-size:0.78rem; width:160px;"
+                     placeholder="min. 8 caractere"/>
+            </div>
+            <div>
+              <label style="color:#64748b; font-size:0.7rem; display:block; margin-bottom:2px;">Confirmă</label>
+              <input type="password" name="confirm_password" required minlength="8"
+                     style="background:#0d1a2d; border:1px solid #1e3a5f; color:#e2e8f0; border-radius:6px; padding:4px 8px; font-size:0.78rem; width:160px;"
+                     placeholder="repetă parola"/>
+            </div>
+            <button type="submit" style="padding:4px 12px; border-radius:6px; background:rgba(249,115,22,0.15); border:1px solid rgba(249,115,22,0.4); color:#fb923c; font-size:0.78rem; font-weight:600; cursor:pointer;">Salvează</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <p style="color:#475569; font-size:0.82rem; text-align:center; padding:1rem 0;">Niciun utilizator configurat.</p>
+      {% endfor %}
+    </div>
+
+    <!-- Add user form -->
+    <details style="border:1px solid #1e3050; border-radius:10px; overflow:hidden;">
+      <summary style="cursor:pointer; padding:0.75rem 1rem; background:#0a1526; color:#64748b; font-size:0.8rem; font-weight:600; list-style:none; display:flex; align-items:center; gap:8px;">
+        <span style="color:#f97316;">＋</span> Adaugă utilizator
+      </summary>
+      <div style="padding:1rem; background:#080e1c;">
+        <form method="POST" action="/admin/users/create" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label style="color:#64748b; font-size:0.7rem; display:block; margin-bottom:2px;">Nume</label>
+            <input type="text" name="username" required
+                   style="background:#0d1a2d; border:1px solid #1e3a5f; color:#e2e8f0; border-radius:6px; padding:5px 10px; font-size:0.82rem; width:130px;"
+                   placeholder="username"/>
+          </div>
+          <div>
+            <label style="color:#64748b; font-size:0.7rem; display:block; margin-bottom:2px;">Parolă</label>
+            <input type="password" name="password" required minlength="8"
+                   style="background:#0d1a2d; border:1px solid #1e3a5f; color:#e2e8f0; border-radius:6px; padding:5px 10px; font-size:0.82rem; width:150px;"
+                   placeholder="min. 8 caractere"/>
+          </div>
+          <div>
+            <label style="color:#64748b; font-size:0.7rem; display:block; margin-bottom:2px;">Rol</label>
+            <select name="role" style="background:#0d1a2d; border:1px solid #1e3a5f; color:#94a3b8; border-radius:6px; padding:5px 8px; font-size:0.82rem;">
+              <option value="user">user</option>
+              <option value="guest">guest</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <button type="submit" style="padding:5px 14px; border-radius:6px; background:rgba(249,115,22,0.15); border:1px solid rgba(249,115,22,0.4); color:#fb923c; font-size:0.82rem; font-weight:600; cursor:pointer;">Creează</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -371,6 +489,12 @@ function copyDvrCmd() {
 function togglePw() {
   const inp = document.getElementById('f-password');
   inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ── Users: toggle password change form ─────────────────────────────────
+function togglePwForm(userId) {
+  const form = document.getElementById('pw-form-' + userId);
+  if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
 }
 
 // ── Format ISO timestamp to local readable ──────────────────────────────
