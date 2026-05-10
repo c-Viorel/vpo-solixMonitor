@@ -8,6 +8,9 @@ services:
     volumes:
       - solix-data:/data
       - /volume2/docker/solix-monitor/recordings:/recordings
+      - /volume2/docker/solix-monitor/app.py:/app/app.py
+      - /volume2/docker/solix-monitor/thumbnail_gen.py:/app/thumbnail_gen.py
+      - /volume2/docker/solix-monitor/templates:/app/templates
     environment:
       - DATA_DIR=/data
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}

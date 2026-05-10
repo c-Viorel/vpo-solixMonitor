@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import tempfile
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +24,12 @@ RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "/recordings")
 THUMB_INTERVAL = 10       # seconds between thumbnails
 THUMB_W, THUMB_H = 160, 90
 SPRITE_COLS = 10
+
+# YOLOv5n — tiny COCO model, downloaded once to /data (persists across restarts)
+_DATA_DIR = os.environ.get("DATA_DIR", "/data")
+_YOLO_MODEL_PATH = os.path.join(_DATA_DIR, "yolov5n.onnx")
+_YOLO_MODEL_URL = "https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.onnx"
+_YOLO_NET = None   # lazy-loaded, cached in memory per worker
 
 _SEG_PATTERN = re.compile(r'^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-\d+\.mp4$')
 
@@ -115,12 +122,86 @@ def _ffmpeg_sprite(mp4_path: Path, sprite_path: Path, meta_path: Path) -> bool:
         return True
 
 
+def _get_yolo_net():
+    """Lazy-load YOLOv5n ONNX model, downloading it on first use."""
+    global _YOLO_NET
+    if _YOLO_NET is not None:
+        return _YOLO_NET
+    try:
+        import cv2
+    except ImportError:
+        return None
+
+    if not os.path.exists(_YOLO_MODEL_PATH):
+        logger.info("Downloading YOLOv5n model (~7MB) to %s …", _YOLO_MODEL_PATH)
+        tmp = _YOLO_MODEL_PATH + ".tmp"
+        try:
+            urllib.request.urlretrieve(_YOLO_MODEL_URL, tmp)
+            os.rename(tmp, _YOLO_MODEL_PATH)
+            logger.info("YOLOv5n model ready")
+        except Exception as exc:
+            logger.warning("Failed to download YOLOv5n: %s", exc)
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            return None
+
+    try:
+        net = cv2.dnn.readNetFromONNX(_YOLO_MODEL_PATH)
+        _YOLO_NET = net
+        logger.info("YOLOv5n loaded via OpenCV DNN")
+        return net
+    except Exception as exc:
+        logger.warning("Failed to load YOLOv5n: %s", exc)
+        return None
+
+
+def _detect_person_yolo(frame, net) -> bool:
+    """
+    Return True if a person (COCO class 0) is detected in the frame.
+    Uses tiled approach: checks full frame + horizontal/vertical crops
+    to handle small persons in wide-angle outdoor cameras.
+    """
+    import cv2
+    import numpy as np
+
+    INPUT_SIZE = 640
+    CONF_THRESHOLD = 0.15   # lower threshold needed for small/distant persons
+    PERSON_CLASS = 0
+
+    h, w = frame.shape[:2]
+
+    # Build tiles: full frame + 3 horizontal strips + 2 vertical halves
+    tiles = [cv2.resize(frame, (INPUT_SIZE, INPUT_SIZE))]
+    for x_start in [0, w // 3, 2 * w // 3]:
+        tile_w = min(w // 2, w - x_start)
+        crop = frame[:, x_start: x_start + tile_w]
+        tiles.append(cv2.resize(crop, (INPUT_SIZE, INPUT_SIZE)))
+    for y_start in [0, h // 2]:
+        crop = frame[y_start: y_start + h // 2, :]
+        tiles.append(cv2.resize(crop, (INPUT_SIZE, INPUT_SIZE)))
+
+    for tile in tiles:
+        blob = cv2.dnn.blobFromImage(
+            tile, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True, crop=False
+        )
+        net.setInput(blob)
+        outputs = net.forward()   # shape: [1, 25200, 85]
+        for det in outputs[0]:
+            obj_conf = float(det[4])
+            if obj_conf < 0.1:
+                continue
+            person_conf = obj_conf * float(det[5 + PERSON_CLASS])
+            if person_conf >= CONF_THRESHOLD:
+                return True
+    return False
+
+
 def detect_motion_in_segment(cam: str, mp4_path: Path, segment_start_iso: str) -> int:
     """
     Analyze a recording segment for motion and persons using OpenCV.
 
     Samples one frame every 5 seconds, computes frame difference to detect motion,
-    then runs the HOG person detector on frames that show motion.
+    then runs YOLOv5n person detection on frames that show motion.
 
     Stores results in DB and marks segment as analyzed.
     Returns number of motion events saved.
@@ -143,13 +224,10 @@ def detect_motion_in_segment(cam: str, mp4_path: Path, segment_start_iso: str) -
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration_sec = total_frames / fps if fps > 0 else 300
 
-    # HOG person detector (built-in, no model download needed)
-    hog = cv2.HOGDescriptor()
-    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-
     SAMPLE_SEC = 5          # sample every N seconds
-    MOTION_THRESH = 0.008   # fraction of pixels that must change (0.8%)
-    PERSON_CONF = 0.4       # minimum HOG confidence to count as person
+    MOTION_THRESH = 0.005   # fraction of pixels that must change (0.5%)
+
+    yolo_net = _get_yolo_net()  # may be None if download failed
 
     events = []
     prev_gray = None
@@ -171,19 +249,14 @@ def detect_motion_in_segment(cam: str, mp4_path: Path, segment_start_iso: str) -
             motion_ratio = cv2.countNonZero(thresh) / thresh.size
 
             if motion_ratio >= MOTION_THRESH:
-                # Run HOG on a larger frame for better accuracy
-                medium = cv2.resize(frame, (480, 270))
-                rects, weights = hog.detectMultiScale(
-                    medium,
-                    winStride=(16, 16),
-                    padding=(8, 8),
-                    scale=1.05,
-                )
-                is_person = (
-                    len(rects) > 0
-                    and len(weights) > 0
-                    and float(max(weights)) >= PERSON_CONF
-                )
+                is_person = False
+                if yolo_net is not None:
+                    try:
+                        # Pass full-resolution frame — tiling handles small persons
+                        is_person = _detect_person_yolo(frame, yolo_net)
+                    except Exception as exc:
+                        logger.debug("YOLO detection error: %s", exc)
+
                 events.append({
                     "offset_sec": round(t, 1),
                     "motion_type": "person" if is_person else "motion",
