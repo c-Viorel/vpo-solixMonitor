@@ -9,6 +9,7 @@ services:
       - solix-data:/data
       - /volume2/docker/solix-monitor/recordings:/recordings
       - /volume2/docker/solix-monitor/app.py:/app/app.py
+      - /volume2/docker/solix-monitor/db.py:/app/db.py
       - /volume2/docker/solix-monitor/thumbnail_gen.py:/app/thumbnail_gen.py
       - /volume2/docker/solix-monitor/templates:/app/templates
     environment:
